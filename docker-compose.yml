@@ -1,0 +1,16 @@
+services:
+  ytsubs:
+    build: .
+    image: ytsubs-cli:latest
+    container_name: ytsubs-cli
+    user: "${YTSUBS_UID:-1000}:${YTSUBS_GID:-1000}"
+    stdin_open: true
+    tty: true
+    environment:
+      - YTSUBS_PROJECT_ROOT=/app
+    volumes:
+      - ./data:/app/data
+      - ./.cache:/app/.cache
+      - ./downloads:/app/downloads
+      - ./.config:/app/.config
+      - ./mods:/app/mods

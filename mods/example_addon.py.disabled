@@ -1,0 +1,21 @@
+"""
+Copy this file to mods/example_addon.py to activate it.
+
+External mods are regular Python files under ./mods. A mod exports create_addon(store)
+and returns an object compatible with ytsubs.core.addons.BaseAddon.
+"""
+
+from ytsubs.core.addons import BaseAddon
+
+
+class ExampleAddon(BaseAddon):
+    name = "example"
+    description = "Example external addon."
+    default_enabled = False
+
+    def render_title(self, ctx, video, current_title):
+        return current_title + " [example]"
+
+
+def create_addon(store):
+    return ExampleAddon(store)
