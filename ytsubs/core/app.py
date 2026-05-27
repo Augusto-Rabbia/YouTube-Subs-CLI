@@ -93,6 +93,10 @@ class App:
         if not spec:
             print("Unknown command. Type `help`.")
             return
+        focus_addon = self.addons.addons.get("focus")
+        gate = getattr(focus_addon, "command_allowed", None)
+        if callable(gate) and not gate(command, args):
+            return
         spec.handler(args)
 
     # Addon management
@@ -112,6 +116,9 @@ class App:
             if name not in self.addons.addons:
                 print(f"No addon named {name!r}.")
                 return
+            if name == "focus":
+                self.addons.addons[name].command(["on"])
+                return
             self.store.set_addon_enabled(name, True)
             print(f"Addon {name} enabled.")
         elif action in {"disable", "off"}:
@@ -121,6 +128,9 @@ class App:
             name = rest[0]
             if name not in self.addons.addons:
                 print(f"No addon named {name!r}.")
+                return
+            if name == "focus":
+                self.addons.addons[name].command(["off"])
                 return
             self.store.set_addon_enabled(name, False)
             print(f"Addon {name} disabled.")
@@ -133,6 +143,9 @@ class App:
             if name not in self.addons.addons:
                 print(f"No addon named {name!r}.")
                 return
+            if name == "focus":
+                print("Manage focus settings with `focus cfg`, `focus schedule`, and `focus invincible`.")
+                return
             self.store.set_config(name, key, value)
             print(f"Set {name}.{key} = {value}")
         elif action == "config":
@@ -140,6 +153,9 @@ class App:
                 print("Usage: addon config NAME")
                 return
             name = rest[0]
+            if name == "focus":
+                self.addons.addons[name].command([])
+                return
             rows = list(
                 self.store.conn.execute(
                     "SELECT key, value FROM addon_config WHERE addon_name = ? ORDER BY key",
@@ -474,11 +490,12 @@ class App:
         from pathlib import Path
         import xml.etree.ElementTree as ET
         from xml.dom import minidom
+        from .paths import DATA_DIR
         
         if not file_path:
-            file_path = "ytsubs_subscriptions.opml"
-            
-        path = Path(file_path).resolve()
+            path = DATA_DIR / "ytsubs_subscriptions.opml"
+        else:
+            path = Path(file_path).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         
         subs = self.store.list_subscriptions()
@@ -486,7 +503,7 @@ class App:
             print("No subscriptions to export.")
             return
             
-        print(f"Exporting {len(subs)} subscriptions to {path.name}...")
+        print(f"Exporting {len(subs)} subscriptions to {path}...")
         
         opml = ET.Element("opml", version="1.0")
         head = ET.SubElement(opml, "head")
@@ -825,6 +842,11 @@ class App:
             return
 
         filtered = self.metadata.with_durations(filtered)
+        debug_log(2, "Invoking addons before_video_list hook")
+        if not self.addons.before_video_list(ctx, filtered):
+            print("Video list request cancelled.")
+            return
+
         self.last_videos = filtered
 
         # Cache last videos list for cross-process CLI watch calls
@@ -833,8 +855,6 @@ class App:
         for position, video in enumerate(filtered, 1):
             self.store.set_cache("core", f"last_video:{position}", video.video_id)
 
-        debug_log(2, "Invoking addons before_video_list hook")
-        self.addons.before_video_list(ctx, filtered)
         print(ctx.heading)
         for i, video in enumerate(filtered, 1):
             title = self.addons.render_title(ctx, video, video.title).replace("\n", " ").strip()

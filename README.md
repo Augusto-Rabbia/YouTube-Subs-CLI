@@ -16,7 +16,7 @@ This application is distributed to run from its source checkout or Docker image,
 - **Configurable new duration**: Custom settings to change the definition of how old "new" videos can be.
 - **Addon system**: Command extensions and hook overrides.
 - **Built-in addons**:
-  - `focus-delay`: delay video list display for focused watching.
+  - `focus`: cancelable display delays, per-day access schedules, and optional protected settings.
   - `title-filter` / `filter`: regex filter titles and toggle YouTube Shorts filtering.
   - `dearrow`: replace clickbait titles with DeArrow community titles.
   - `download`: download videos with metadata, SponsorBlock support, and quality selectors.
@@ -113,7 +113,12 @@ Sub added successfully!
 Current subscriptions:
 Dude Perfect (@dudeperfect)
 3Blue1Brown (@3blue1brown)
+
+# Export subscriptions to the default persisted file
+> sub export
 ```
+
+The default OPML export is saved under `./data/ytsubs_subscriptions.opml` on the host. In Docker command output this mounted file is shown as `/app/data/ytsubs_subscriptions.opml`.
 
 ### 3. Subscription Categories & Filtering
 Categories let you group channels and filter feed outputs.
@@ -171,6 +176,27 @@ Track read status to keep your feed clean.
 Marked 68 videos published before 2026-06-26 as watched.
 ```
 
+### 6. Focus Schedules
+The `focus` addon can delay video lists and restrict commands that show videos or operate on subscriptions. Times use the machine's local time. A day without a configured schedule is unrestricted.
+```text
+# Turn on focus behavior and cancel a requested list when a key is pressed during its delay
+> focus on
+> focus cfg seconds 45
+
+# Monday through Thursday: permit access only from 16:00-18:00 and 20:00-21:00
+> focus schedule set mon-thu allow 16:00-18:00,20:00-21:00
+
+# Optional alternative: block a specific window instead of declaring allowed windows
+> focus schedule set fri block 09:00-17:00
+
+# Remove restrictions from Friday through Sunday
+> focus schedule clear fri-sun
+```
+
+Protected actions are `sub`, `new`, `latest`, `watch`, `refresh`, and `download`/`dl` video downloads. Configuration and help commands remain available.
+
+`focus invincible on` displays a confirmation warning before it enables protection. When enabled, the focus addon cannot be disabled immediately; schedule and delay changes, or turning off focus/invincible mode, take effect only at 05:00 local time on the following day. Configure the intended schedule before confirming invincible mode.
+
 ## Core commands
 
 ```text
@@ -187,6 +213,7 @@ watch NUMBER [NUMBER...] | VIDEO_ID_OR_URL [...] | DATE+ | all
 w NUMBER [NUMBER...] | VIDEO_ID_OR_URL [...] | DATE+ | all
 refresh
 addon list | enable NAME | disable NAME | set NAME KEY VALUE | config NAME
+focus on | off | cfg [help|seconds N] | schedule list|set|clear | invincible on|off
 purge [DAYSd]
 debug [on|off|0|1|2]
 quit
@@ -211,7 +238,7 @@ ytsubs/
   addons/
     dearrow.py
     download.py
-    focus_delay.py
+    focus.py
     title_filter.py       title regexes & YouTube shorts filtering
 mods/
   example_addon.py.disabled

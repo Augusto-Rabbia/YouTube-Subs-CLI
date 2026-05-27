@@ -44,7 +44,7 @@ class Addon(Protocol):
     def register_commands(self, registry: AddonRegistry) -> None:
         ...
 
-    def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> None:
+    def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> bool | None:
         ...
 
     def filter_videos(self, ctx: VideoListContext, videos: list[Video]) -> list[Video]:
@@ -106,8 +106,8 @@ class BaseAddon:
     def register_commands(self, registry: AddonRegistry) -> None:
         return None
 
-    def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> None:
-        return None
+    def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> bool | None:
+        return True
 
     def filter_videos(self, ctx: VideoListContext, videos: list[Video]) -> list[Video]:
         return videos
@@ -121,7 +121,7 @@ class BaseAddon:
 
 class AddonManager:
     BUILTIN_MODULES = (
-        "ytsubs.addons.focus_delay",
+        "ytsubs.addons.focus",
         "ytsubs.addons.title_filter",
         "ytsubs.addons.dearrow",
         "ytsubs.addons.download",
@@ -179,10 +179,12 @@ class AddonManager:
                 result = addon.filter_videos(ctx, result)
         return result
 
-    def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> None:
+    def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> bool:
         for addon in self.addons.values():
             if self.is_enabled(addon):
-                addon.before_video_list(ctx, videos)
+                if addon.before_video_list(ctx, videos) is False:
+                    return False
+        return True
 
     def render_title(self, ctx: VideoListContext, video: Video, title: str) -> str:
         result = title

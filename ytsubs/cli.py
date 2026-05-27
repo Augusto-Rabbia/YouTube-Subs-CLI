@@ -24,7 +24,7 @@ HELP_DETAILS = {
             "  sub category add <ch> <c>  - Label channel with a category tag (e.g. sub cat @handle Tech).\n"
             "  sub category rm <ch> <c>   - Remove category tag from channel.\n"
             "  sub import <file_path>     - Import subscription channels from an OPML file.\n"
-            "  sub export [file_path]     - Export subscription channels to an OPML file (default: ytsubs_subscriptions.opml)."
+            "  sub export [file_path]     - Export subscription channels to an OPML file (default: data/ytsubs_subscriptions.opml)."
         ),
         "examples": [
             "sub list",
@@ -32,7 +32,7 @@ HELP_DETAILS = {
             "sub add 1",
             "sub category add @3blue1brown Education",
             "sub import data/youtube_subs.opml",
-            "sub export backups/my_channels.opml"
+            "sub export data/backups/my_channels.opml"
         ]
     },
     "new": {
@@ -115,6 +115,28 @@ HELP_DETAILS = {
             "addon enable download",
             "addon set download quality 720p",
             "addon config download"
+        ]
+    },
+    "focus": {
+        "summary": "Delay or schedule access to subscription and video actions.",
+        "usage": "focus on|off|cfg [help|seconds N]|schedule ...|invincible on|off",
+        "details": (
+            "  - focus cfg seconds <n>    - Wait before showing video lists; any key cancels the request.\n"
+            "  - focus schedule list      - Display active local-time access rules.\n"
+            "  - focus schedule set <days> allow <ranges> - Permit protected actions only in windows.\n"
+            "  - focus schedule set <days> block <ranges> - Block protected actions in windows.\n"
+            "  - focus schedule clear <days|all>          - Remove rules for selected days.\n"
+            "  - focus invincible on      - Enable protected focus mode after a prominent confirmation warning.\n"
+            "  - focus invincible off     - Schedule focus and invincible shutdown for next-day 05:00.\n"
+            "  DAYS examples: mon-thu, weekdays, weekends, mon,wed,fri. Ranges use HH:MM-HH:MM.\n"
+            "  Protected actions: sub, new, latest, watch, refresh, and video downloads."
+        ),
+        "examples": [
+            "focus on",
+            "focus cfg seconds 45",
+            "focus schedule set mon-thu allow 16:00-18:00,20:00-21:00",
+            "focus schedule clear fri-sun",
+            "focus invincible on"
         ]
     },
     "filter": {

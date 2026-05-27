@@ -20,7 +20,7 @@ CLI command (cli.py)
 -> Store query & video caching (store.py)
 -> Apply addon filters (title regex, Shorts checks)
 -> Resolve and cache missing durations for displayed videos (metadata.py / youtube.py)
--> Run before list hooks (focus countdowns)
+-> Run before list hooks (focus countdowns can cancel rendering)
 -> Run title renderer hooks (DeArrow clickbait replacement)
 -> Print list output
 -> Run after list hooks (updates cached indices for watch/download shortcuts)
@@ -62,6 +62,7 @@ Enriches videos that will be printed with metadata unavailable from RSS, current
 
 ### 6. `ytsubs.core.addons`
 Loads Python extension files from the configured mods directory and handles the invocation order (built-ins first, then external mods alphabetically).
+The built-in `focus` addon also exposes a central command-access check used by the app dispatcher for per-day subscription/video access schedules. Its invincible setting holds protected changes until 05:00 local time on the following day.
 
 ---
 
@@ -69,7 +70,7 @@ Loads Python extension files from the configured mods directory and handles the 
 
 Repository scripts and the Docker setup explicitly use a portable project-root layout:
 ```text
-./data/                       # SQLite databases (e.g. ytsubs.sqlite3)
+./data/                       # SQLite databases and default OPML exports
 ./downloads/                  # downloaded media files (used by download addon)
 ./mods/                       # custom external addons
 ./.venv/                      # Python virtualenv (for native runs)

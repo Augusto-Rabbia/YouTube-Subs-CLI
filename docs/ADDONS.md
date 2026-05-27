@@ -85,10 +85,13 @@ def filter_videos(self, ctx, videos):
 ```
 
 ### 2. Before Video List (`before_video_list`)
-Runs immediately before the video list is outputted to the terminal (e.g. countdown timers, delays).
+Runs immediately before the video list is outputted to the terminal (e.g. countdown timers, delays). Return `False` to cancel rendering; returning `None` or `True` lets the list proceed.
 ```python
 def before_video_list(self, ctx, videos):
+    if not confirm_display(videos):
+        return False
     print(f"Listing {len(videos)} videos:")
+    return True
 ```
 
 ### 3. Title Renderer (`render_title`)

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Renamed `focus-delay` to `focus` and expanded it with cancel-on-key delays, per-day allow/block schedules, and an invincible mode that defers protected changes until the following day at 05:00 local time.
+- Saved default subscription OPML exports under the persisted `data/` directory so Docker users can export without writing to `/app`.
+
 ## 0.4.0 - 2026-05-26
 
 - Restricted profile identifiers to safe database filename components.
