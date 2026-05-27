@@ -1,26 +1,28 @@
-# ytsubs-cli
+# YTSubs-cli
 
-A local, terminal-first YouTube subscription tracker with profile support, channel categories, and an addon system.
+**Follow YouTube on your terms.**
 
-The app keeps its own local subscription profiles, fetches public YouTube channel RSS feeds, lists new/latest videos with exact hours and minutes, tracks watched status, and lets addons modify behavior without changing the core command layer.
+`YTSubs-cli` is a calm, local-first subscription inbox for people who want the channels they chose without the homepage, recommendations, Shorts rabbit holes, or algorithmic pressure. Open a terminal, see what your subscriptions published, mark what you have handled, and leave.
 
-This application is distributed to run from its source checkout or Docker image, rather than as a Python package. Application state stays in this project directory by default; set `YTSUBS_PROJECT_ROOT` when launching `python -m ytsubs` directly to choose a different portable state root.
+It gives you a deliberate way to use YouTube:
 
+- View new or recent uploads as a clean, readable list.
+- Organize channels into separate profiles and meaningful categories.
+- Filter distractions such as unwanted titles or Shorts.
+- Download videos for offline viewing with metadata and SponsorBlock options.
+- Set focus hours that make browsing available only when you decided it should be.
+- Keep your subscription workflow local, lightweight, and under your control.
 
-## Features
+## Why ytsubs-cli?
 
-- **Profiles**: Run isolated, multiple subscription environments (e.g. `gaming`, `work`, `default`) with separate databases.
-- **Categories**: Label subscriptions into custom tags (e.g. `Tech`, `Gaming`) and filter feeds by category.
-- **No browser or API keys**: Fetches public feeds and runs completely locally.
-- **Micro-caching**: Resolves and caches video durations, Shorts status, and position indices locally for faster rendering.
-- **Configurable new duration**: Custom settings to change the definition of how old "new" videos can be.
-- **Addon system**: Command extensions and hook overrides.
-- **Built-in addons**:
-  - `focus`: cancelable display delays, per-day access schedules, and optional protected settings.
-  - `title-filter` / `filter`: regex filter titles and toggle YouTube Shorts filtering.
-  - `dearrow`: replace clickbait titles with DeArrow community titles.
-  - `download`: download videos with metadata, SponsorBlock support, and quality selectors.
+- **An inbox, not a feed**: `new` and `latest` show subscribed uploads directly, with timestamps, duration, and watched tracking.
+- **Your own organization**: Profiles separate contexts such as study and entertainment; categories let you query only what matters right now.
+- **Attention controls built in**: `focus` supports delays, daily access windows, and an optional invincible mode for commitments you cannot immediately undo.
+- **Less clickbait and noise**: Filter titles and Shorts, or use DeArrow titles when available.
+- **Take videos with you**: Download selected items with embedded metadata, chapters, quality controls, and optional SponsorBlock processing.
+- **Private by default**: It works locally from public YouTube data and does not require browser sign-in or an API key.
 
+The result is still YouTube, but shaped into a finite queue you can intentionally check and close.
 
 ## Requirements
 
@@ -29,7 +31,7 @@ This application is distributed to run from its source checkout or Docker image,
 
 ---
 
-## Quickstart (Easiest via Docker)
+## Quickstart (Docker)
 
 Running with Docker is the recommended setup. It works out-of-the-box on **Windows, macOS, and Linux**, handling Python and `ffmpeg` dependencies automatically.
 
@@ -52,7 +54,7 @@ Running with Docker is the recommended setup. It works out-of-the-box on **Windo
 
 ---
 
-## Alternative Setup (Non-Docker, Linux/macOS)
+## Alternative Setup (Linux/macOS)
 
 If you prefer to run the application natively on Unix:
 
@@ -193,64 +195,15 @@ The `focus` addon can delay video lists and restrict commands that show videos o
 > focus schedule clear fri-sun
 ```
 
-Protected actions are `sub`, `new`, `latest`, `watch`, `refresh`, and `download`/`dl` video downloads. Configuration and help commands remain available.
+Protected actions are `sub`, `new`, `latest`, `watch`, `refresh`, and `download`/`dl`. Configuration and help commands remain available.
 
-`focus invincible on` displays a confirmation warning before it enables protection. When enabled, the focus addon cannot be disabled immediately; schedule and delay changes, or turning off focus/invincible mode, take effect only at 05:00 local time on the following day. Configure the intended schedule before confirming invincible mode.
+**Invincible mode**: Be in control of your own life. When on, your focus settings will be impulse-safe: Any changes will take effect only at 05:00 local time on the following day. Configure the intended schedule before confirming invincible mode.
 
-## Core commands
+## Addons
 
-```text
-sub list
-sub add @Handle | URL | CHANNEL_ID | NUMBER
-sub search search terms
-sub rm @Handle-or-name-or-channel-id
-sub category list | add <channel> <category> | rm <channel> <category>
-sub import FILE | sub export [FILE]
-profile list | switch NAME | create NAME | current | backup [NAME] | restore NAME | backups
-new [DAYSd] | new default [DAYSd]
-latest COUNT | latest DAYSd | latest COUNT CHANNEL_OR_CATEGORY
-watch NUMBER [NUMBER...] | VIDEO_ID_OR_URL [...] | DATE+ | all
-w NUMBER [NUMBER...] | VIDEO_ID_OR_URL [...] | DATE+ | all
-refresh
-addon list | enable NAME | disable NAME | set NAME KEY VALUE | config NAME
-focus on | off | cfg [help|seconds N] | schedule list|set|clear | invincible on|off
-purge [DAYSd]
-debug [on|off|0|1|2]
-quit
-```
+You can create and install any number of addons to suit your own needs. You are in control. 
 
-Global options: `--profile NAME`, `--help`, and `--version`.
-
-## Repository layout
-
-```text
-ytsubs/
-  cli.py                  interactive shell and one-shot command runner
-  core/
-    app.py                application command orchestration
-    addons.py             addon registry, loader, and hook pipeline
-    metadata.py           cached video metadata enrichment
-    models.py             domain dataclasses
-    paths.py              portable and user-scoped runtime paths
-    store.py              SQLite persistence
-    youtube.py            YouTube RSS and yt-dlp integration
-    util.py               parsing helpers
-  addons/
-    dearrow.py
-    download.py
-    focus.py
-    title_filter.py       title regexes & YouTube shorts filtering
-mods/
-  example_addon.py.disabled
-docs/
-  ADDONS.md
-  ARCHITECTURE.md
-  DOWNLOADS.md
-```
-
-## Security model
-
-External addons are Python code executed inside this process. Only install addons you trust.
+*Warning*: External addons are Python code executed inside this process. Only install addons you trust.
 
 ## Documentation
 
