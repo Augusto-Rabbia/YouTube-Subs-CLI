@@ -49,6 +49,10 @@ class AddonContractTests(unittest.TestCase):
             with redirect_stdout(output), patch("builtins.input", return_value="") as read_input:
                 manager.registry.commands["solo"].handler(["setup"])
             read_input.assert_called_once_with("Enable `solo`? [y/N]: ")
+            store.set_addon_enabled("solo", True)
+            store.set_config("solo", "option", "stored")
+            snapshot = manager.export_config_snapshot()
+            self.assertEqual(snapshot["solo"]["config"], {"option": "stored"})
 
             app = SimpleNamespace(store=store, addons=manager, registry=manager.registry)
             shell = Shell(app)

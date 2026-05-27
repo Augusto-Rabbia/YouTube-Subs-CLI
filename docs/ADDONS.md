@@ -34,6 +34,21 @@ The global application setup enumerates installed addons through `name` and `des
 
 The manager also guarantees a `<name> setup` command. If the addon does not register a command named after itself, that setup entrypoint is provided automatically. If it does register its own named command, the manager reserves its `setup` action for `addon.setup(ui)` and passes the remaining actions to the addon handler.
 
+## Portable Configuration Hooks
+
+Application-level `config export` does not inspect addon configuration. It calls hidden addon hooks to obtain and later restore each addon's opaque snapshot:
+
+```python
+def export_config_snapshot(self) -> dict[str, object]:
+    return {"enabled": self.enabled, "config": {"option1": "value"}}
+
+def import_config_snapshot(self, payload: object, ui: SetupPrompts) -> None:
+    # Validate and restore this addon's own data.
+    ...
+```
+
+`BaseAddon` implements these hooks for standard addons that use their own namespaced `addon_state` and `addon_config` values. Override them when an addon stores data in private files, a private database, another persistence namespace, or has import-time safety requirements. The core exporter treats addon snapshots as opaque data and does not know any addon-specific keys.
+
 ## Command Standard Configuration Pattern
 
 To keep command interfaces clean and consistent for the user, all addons should follow the standardized configuration pattern:

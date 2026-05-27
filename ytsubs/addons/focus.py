@@ -174,6 +174,33 @@ class FocusAddon(BaseAddon):
     def set_config(self, key: str, value: str) -> None:
         self.command_cfg([key, value])
 
+    def export_config_snapshot(self) -> dict[str, object]:
+        payload = super().export_config_snapshot()
+        config = payload.get("config")
+        if isinstance(config, dict):
+            config.pop("pending", None)
+        return payload
+
+    def import_config_snapshot(self, payload: object, ui: SetupPrompts) -> None:
+        if not isinstance(payload, dict):
+            super().import_config_snapshot(payload, ui)
+            return
+        config = payload.get("config", {})
+        restored = dict(config) if isinstance(config, dict) else {}
+        requested_invincible = str(restored.get("invincible", "off")).lower() == "on"
+        if requested_invincible:
+            self.print_invincible_warning(ui.print)
+            if not ui.ask_yes_no("  Restore focus with invincible mode enabled?", False):
+                restored["invincible"] = "off"
+                ui.print("  Invincible mode was not restored.")
+        restored.pop("pending", None)
+        self.store.delete_config(self.persistence_namespace, "pending")
+        adjusted = dict(payload)
+        adjusted["config"] = restored
+        super().import_config_snapshot(adjusted, ui)
+        if requested_invincible and restored.get("invincible") == "on":
+            self.store.set_addon_enabled(self.name, True)
+
     def command_cfg(self, args: list[str]) -> None:
         if not args:
             self.print_status()
@@ -336,13 +363,7 @@ class FocusAddon(BaseAddon):
                 print("Invincible mode is already enabled.")
             return
 
-        print("WARNING: Invincible mode is a deliberate lock on focus controls.")
-        print("- It enables the focus addon immediately and protects it from immediate disabling.")
-        print("- Protected commands are blocked according to the currently active focus schedule.")
-        print("- Changes to schedules or the delay timer will not apply until the next day at 05:00 local time.")
-        print("- Turning off invincible mode or the focus addon is also delayed until then.")
-        print("- During blocked hours, sub/new/latest/watch/refresh/download actions are unavailable.")
-        print("You may be unable to regain YouTube/subscription access until the scheduled release time.")
+        self.print_invincible_warning(print)
         confirmed = " ".join(confirmation).lower().strip() == "confirm"
         if not confirmed and sys.stdin.isatty():
             try:
@@ -358,6 +379,15 @@ class FocusAddon(BaseAddon):
         self.store.set_config(self.name, "invincible", "on")
         self.cancel_shutdown()
         print("Invincible mode enabled. The focus addon is enabled and protected immediately.")
+
+    def print_invincible_warning(self, output) -> None:
+        output("WARNING: Invincible mode is a deliberate lock on focus controls.")
+        output("- It enables the focus addon immediately and protects it from immediate disabling.")
+        output("- Protected commands are blocked according to the currently active focus schedule.")
+        output("- Changes to schedules or the delay timer will not apply until the next day at 05:00 local time.")
+        output("- Turning off invincible mode or the focus addon is also delayed until then.")
+        output("- During blocked hours, sub/new/latest/watch/refresh/download actions are unavailable.")
+        output("You may be unable to regain YouTube/subscription access until the scheduled release time.")
 
     def disable_invincible(self) -> None:
         if not self.invincible_enabled():

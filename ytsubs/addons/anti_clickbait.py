@@ -50,18 +50,6 @@ class AntiClickbaitAddon(BaseAddon):
             addon_name=self.name,
         )
 
-    @property
-    def enabled(self) -> bool:
-        return self.store.is_addon_enabled(self.storage_namespace, self.default_enabled)
-
-    def enable(self) -> None:
-        self.store.set_addon_enabled(self.storage_namespace, True)
-        print("Addon anti-clickbait enabled.")
-
-    def disable(self) -> None:
-        self.store.set_addon_enabled(self.storage_namespace, False)
-        print("Addon anti-clickbait disabled.")
-
     def command(self, args: list[str]) -> None:
         if not args:
             print(
@@ -97,13 +85,13 @@ class AntiClickbaitAddon(BaseAddon):
                 if val not in VALID_MODES:
                     print("Error: mode must be one of: original, replaced, both")
                     return
-                self.store.set_config(self.storage_namespace, "mode", val)
+                self.store.set_config(self.persistence_namespace, "mode", val)
                 print(f"Set anti-clickbait.mode = {val}")
             elif sub == "casing":
                 if val not in VALID_CASINGS:
                     print("Error: casing must be one of: as-is, shift-caps")
                     return
-                self.store.set_config(self.storage_namespace, "casing", val)
+                self.store.set_config(self.persistence_namespace, "casing", val)
                 print(f"Set anti-clickbait.casing = {val}")
             else:
                 print(f"Unknown configuration key: {sub}")
@@ -120,13 +108,13 @@ class AntiClickbaitAddon(BaseAddon):
             VALID_MODES,
             self.mode(),
         )
-        self.store.set_config(self.storage_namespace, "mode", mode)
+        self.store.set_config(self.persistence_namespace, "mode", mode)
         casing = ui.ask_choice(
             f"  Title capitalization [{self.casing()}] (as-is/shift-caps): ",
             VALID_CASINGS,
             self.casing(),
         )
-        self.store.set_config(self.storage_namespace, "casing", casing)
+        self.store.set_config(self.persistence_namespace, "casing", casing)
 
     def print_config(self) -> None:
         self.command(["cfg"])
@@ -135,13 +123,13 @@ class AntiClickbaitAddon(BaseAddon):
         self.command(["cfg", key, value])
 
     def mode(self) -> str:
-        mode = (self.store.get_config(self.storage_namespace, "mode", "replaced") or "replaced").lower()
+        mode = (self.store.get_config(self.persistence_namespace, "mode", "replaced") or "replaced").lower()
         if mode not in VALID_MODES:
             return "replaced"
         return mode
 
     def casing(self) -> str:
-        casing = (self.store.get_config(self.storage_namespace, "casing", "as-is") or "as-is").lower()
+        casing = (self.store.get_config(self.persistence_namespace, "casing", "as-is") or "as-is").lower()
         if casing not in VALID_CASINGS:
             return "as-is"
         return casing
@@ -168,7 +156,7 @@ class AntiClickbaitAddon(BaseAddon):
 
     def get_replacement_title(self, video_id: str) -> str | None:
         cache_key = f"title:{video_id}"
-        cached = self.store.get_cache(self.storage_namespace, cache_key)
+        cached = self.store.get_cache(self.persistence_namespace, cache_key)
         if cached is not None:
             debug_log(2, f"anti-clickbait cache hit for {video_id}: {cached!r}")
             return cached or None
@@ -178,7 +166,7 @@ class AntiClickbaitAddon(BaseAddon):
         except Exception as exc:
             debug_log(1, f"anti-clickbait: failed to fetch replacement title for {video_id}: {exc}")
             title = None
-        self.store.set_cache(self.storage_namespace, cache_key, title or "")
+        self.store.set_cache(self.persistence_namespace, cache_key, title or "")
         return title
 
     def fetch_replacement_title(self, video_id: str) -> str | None:

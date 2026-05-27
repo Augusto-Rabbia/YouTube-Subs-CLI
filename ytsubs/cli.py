@@ -144,12 +144,27 @@ HELP_DETAILS = {
             "addon config your-addon"
         ]
     },
+    "config": {
+        "summary": "Export a portable backup of subscriptions and settings.",
+        "usage": "config export [FILE]",
+        "details": (
+            "  Exports subscriptions, categories, built-in download preferences, and installed addon settings.\n"
+            "  - config export            - Save to data/ytsubs_configuration.json.\n"
+            "  - config export <file>     - Save to a chosen JSON file.\n"
+            "  Import an exported file through `setup`, where protected addon settings can show required warnings."
+        ),
+        "examples": [
+            "config export",
+            "config export data/my_ytsubs_backup.json",
+        ],
+    },
     "setup": {
         "summary": "Run the guided first-time configuration again.",
         "usage": "setup",
         "details": (
             "  Starts the setup wizard after you confirm by typing `ok`.\n"
-            "  The wizard adds subscriptions, configures downloading, and calls each installed addon's own setup flow."
+            "  The wizard can restore a `config export` file, or configure subscriptions, downloading,\n"
+            "  and each installed addon's own setup flow manually."
         ),
         "examples": [
             "setup"
@@ -291,6 +306,7 @@ class Shell(cmd.Cmd):
             ("dl", "download"),
             ("r", "refresh"),
             (None, "addon"),
+            (None, "config"),
             (None, "setup"),
             ("p", "profile"),
             (None, "purge"),

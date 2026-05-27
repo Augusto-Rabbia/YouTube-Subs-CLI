@@ -121,6 +121,45 @@ class DownloadService:
         if ui.ask_yes_no("  Configure SponsorBlock removal/chapter actions now?", False):
             self.sponsorblock_wizard(ui)
 
+    def export_config_snapshot(self) -> dict[str, object]:
+        config = self.config()
+        return {
+            "directory": self.store.get_config(self.namespace, "directory", "downloads") or "downloads",
+            "quality": config.quality,
+            "container": config.container,
+            "auto_watch": config.auto_watch,
+            "sponsorblock": dict(config.sb_actions),
+        }
+
+    def import_config_snapshot(self, payload: object, ui: SetupPrompts) -> None:
+        if not isinstance(payload, dict):
+            ui.print("  Skipped invalid download settings section.")
+            return
+        directory = payload.get("directory")
+        if isinstance(directory, str) and directory.strip():
+            path = resolve_download_directory(directory.strip())
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                ui.print(f"  Could not restore download directory {path}: {exc}")
+            else:
+                self.store.set_config(self.namespace, "directory", directory.strip())
+        quality = payload.get("quality")
+        if isinstance(quality, str) and valid_quality(quality.lower()):
+            self.store.set_config(self.namespace, "quality", quality.lower())
+        container = payload.get("container")
+        if isinstance(container, str) and container.lower() in VALID_CONTAINERS:
+            self.store.set_config(self.namespace, "container", container.lower())
+        auto_watch = payload.get("auto_watch")
+        if isinstance(auto_watch, bool):
+            self.store.set_config(self.namespace, "auto_watch", "on" if auto_watch else "off")
+        actions = payload.get("sponsorblock")
+        if isinstance(actions, dict):
+            for category, action in actions.items():
+                if isinstance(category, str) and isinstance(action, str) and action in {"cut", "mark", "off"}:
+                    self.store.set_config(self.namespace, f"sb_action:{category}", action)
+        ui.print("  Imported download settings.")
+
     def command_cfg(self, args: list[str]) -> None:
         if not args:
             config = self.config()

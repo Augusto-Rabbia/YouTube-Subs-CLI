@@ -6,6 +6,7 @@ import sqlite3
 
 from .addons import AddonManager
 from .commands import CommandRegistry
+from .configuration import ConfigurationTransfer
 from .download import DownloadService
 from .metadata import VideoMetadataService
 from .models import Video, VideoListContext, fmt_date, fmt_duration, parse_datetime, utcnow
@@ -25,6 +26,7 @@ class App:
         self.last_videos: list[Video] = []
         self.download = DownloadService(self.store)
         self.addons = AddonManager(self.store)
+        self.configuration = ConfigurationTransfer(self)
         self.registry = self.addons.registry
 
         try:
@@ -53,6 +55,7 @@ class App:
         registry.command("refresh", lambda args: self.refresh(), "refresh", access_controlled=True)
         self.download.register_commands(registry)
         registry.command("addon", self.addon_command, "addon list|enable NAME|disable NAME|set NAME KEY VALUE|config NAME")
+        registry.command("config", self.config_command, "config export [FILE]")
         registry.command("setup", self.setup_command, "setup", access_controlled=True)
         registry.command("purge", self.purge, "purge [DAYSd]")
         registry.command("debug", self.debug_command, "debug [on|off|0|1|2]")
@@ -110,7 +113,7 @@ class App:
         if action in {"list", "ls"}:
             print("Addons:")
             for name, addon in sorted(self.addons.addons.items()):
-                enabled = self.store.is_addon_enabled(name, addon.default_enabled)
+                enabled = addon.enabled
                 print(f"- {name}: {'enabled' if enabled else 'disabled'} - {addon.description}")
         elif action in {"enable", "on"}:
             if not rest:
@@ -159,6 +162,13 @@ class App:
         from .setup import SetupWizard
 
         SetupWizard(self).run(require_confirmation=True)
+
+    def config_command(self, args: list[str]) -> None:
+        if not args or args[0].lower().strip() != "export":
+            print("Usage: config export [FILE]")
+            return
+        path = " ".join(args[1:]).strip() if len(args) > 1 else None
+        self.configuration.export_file(path)
 
     # Subscription commands
     def sub(self, args: list[str]) -> None:

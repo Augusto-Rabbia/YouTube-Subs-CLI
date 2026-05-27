@@ -71,7 +71,7 @@ If you prefer to run the application natively on Unix:
 
 ## Guided Setup
 
-On first launch, YTSubs starts an interactive setup wizard. It asks for your comma-separated channel list first, then resolves those channels in the background while you configure downloads and choose addons. After configuration questions, it tells you when a channel name produced multiple matches and lets you select each subscription explicitly.
+On first launch, YTSubs starts an interactive setup wizard. You may restore an earlier `config export` file, or configure a new profile manually. During manual setup it asks for your comma-separated channel list first, then resolves those channels in the background while you configure downloads and choose addons. After configuration questions, it tells you when a channel name produced multiple matches and lets you select each subscription explicitly.
 
 The wizard can configure:
 
@@ -83,6 +83,13 @@ The wizard can configure:
 Run `setup` later to revisit the wizard; because it can alter existing settings, rerunning it requires typing `ok` first.
 
 Downloading is built into the application and can be reconfigured independently with `download setup`. Each optional addon owns its guided configuration and can be configured independently with `title-filter setup`, `anti-clickbait setup`, or `focus setup`.
+
+Export a portable JSON backup at any time:
+```text
+> config export
+> config export data/my_ytsubs_backup.json
+```
+The export contains subscriptions, categories, download preferences, and settings supplied by each installed addon. Restore it from the setup wizard; sensitive settings such as focus invincible mode still require their own warning and confirmation.
 
 ## Usage Tutorial
 

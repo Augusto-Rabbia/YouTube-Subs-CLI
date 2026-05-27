@@ -52,15 +52,17 @@ class SetupWizard:
             self.print("YTSubs Setup")
             self.print("============")
             self.print("This wizard prepares your subscriptions, downloads, and optional viewing controls.")
+            if self.import_exported_configuration():
+                self.ui.finish()
+                self.complete_setup()
+                return True
             specs = self.collect_channel_specs()
             executor, lookups = self.start_channel_lookups(specs)
             self.configure_download()
             self.configure_addons()
             self.finish_channel_lookups(lookups)
             self.ui.finish()
-            self.app.store.set_config("core", "setup_complete", "on")
-            self.print("")
-            self.print("Setup complete. Run `new` to see unwatched uploads or `latest 10` to browse recent videos.")
+            self.complete_setup()
             return True
         except (EOFError, KeyboardInterrupt):
             self.print("\nSetup cancelled before completion. Run `setup` to continue later.")
@@ -68,6 +70,29 @@ class SetupWizard:
         finally:
             if executor is not None:
                 executor.shutdown(wait=True)
+
+    def import_exported_configuration(self) -> bool:
+        self.print("")
+        self.print("Restore")
+        if not self.ui.ask_yes_no("Import subscriptions and settings from a ytsubs configuration file?", False):
+            return False
+        file_path = self.input("Configuration file path: ").strip()
+        if not file_path:
+            self.print("No file selected. Continuing with guided setup.")
+            return False
+        result = self.app.configuration.import_file(file_path, self.ui)
+        if result is None:
+            self.print("Continuing with guided setup.")
+            return False
+        if result.subscriptions_added:
+            self.print("Fetching initial uploads from imported subscriptions...")
+            self.app.refresh_silent(force=True)
+        return True
+
+    def complete_setup(self) -> None:
+        self.app.store.set_config("core", "setup_complete", "on")
+        self.print("")
+        self.print("Setup complete. Run `new` to see unwatched uploads or `latest 10` to browse recent videos.")
 
     def collect_channel_specs(self) -> list[str]:
         self.print("")

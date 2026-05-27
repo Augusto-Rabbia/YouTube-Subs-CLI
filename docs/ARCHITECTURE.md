@@ -40,7 +40,10 @@ Orchestrates commands (sub, profiles, category management, new/latest, watch, pu
 ### 3. `ytsubs.core.download`
 Owns built-in offline viewing: `download`/`dl` commands, destination and format settings, SponsorBlock options, and displayed-list index mapping for download shortcuts. It uses the persistent `download` configuration namespace without participating in addon discovery or enablement.
 
-### 4. `ytsubs.core.store`
+### 4. `ytsubs.core.configuration`
+Writes and restores portable JSON configuration exports containing subscriptions, categories, core preferences, and built-in download preferences. Addon sections remain opaque: this service delegates them to `AddonManager`, which invokes each addon's own snapshot hooks.
+
+### 5. `ytsubs.core.store`
 Manages the SQLite database operations, schema migrations, configurations, and cache writes.
 **Tables**:
 * `subscriptions`: Track channel IDs, handles, titles, and added dates.
@@ -53,21 +56,21 @@ Manages the SQLite database operations, schema migrations, configurations, and c
 * `addon_cache`: Cache transient keys (e.g. Shorts HEAD statuses, Anti-Clickbait/DeArrow-source metadata, numbered list cache position mappings).
 * `channel_search_results`: Cache temporary channel searches.
 
-### 5. `ytsubs.core.youtube`
+### 6. `ytsubs.core.youtube`
 Manages network connections and parsing of YouTube details:
 * Queries YouTube's XML RSS feed URLs using fast built-in `urllib` HTTP GET requests.
 * **Parallel processing**: Launches channel fetches concurrently using a `ThreadPoolExecutor` (capping at 10 worker threads) to speed up loading times.
 * **Failover Fallback**: If the standard RSS feed returns HTTP errors (e.g. `404` or `500`), the client falls back to running `yt-dlp` flat extraction on the channel's web page, extracting strictly the top 30 videos (`playlist_items: "1-30"`) to maintain high speeds.
 * Resolves metadata absent from RSS, such as video duration, on demand for the metadata service.
 
-### 6. `ytsubs.core.metadata`
+### 7. `ytsubs.core.metadata`
 Enriches videos that will be printed with metadata unavailable from RSS, currently duration. Values are persisted in `video_metadata`, so `yt-dlp` lookups are generally paid only once per video; unresolved durations are retried after a short cooldown.
 
-### 7. `ytsubs.core.addons`
+### 8. `ytsubs.core.addons`
 Discovers Python addon files from the shipped addon package and configured mods directory, then handles their invocation order. `BaseAddon` supplies generic enable/disable, configuration, setup, command-access, help metadata, and isolated storage extension points. Commands declare whether an action consumes restricted content access; policy addons such as `focus` enforce that declaration without depending on other addon command names.
 
-### 8. `ytsubs.core.setup`
-Runs only the application-level first-launch and `setup` workflow. Channel resolution starts immediately after channel entry and continues concurrently while core download preferences are configured and each discovered addon is presented using its `name` and `description` and invoked through `addon.setup(...)`. When setup questions have finished, ambiguous channel-name results are presented for explicit user selection.
+### 9. `ytsubs.core.setup`
+Runs only the application-level first-launch and `setup` workflow. It first offers to restore a portable configuration export. For manual configuration, channel resolution starts immediately after channel entry and continues concurrently while core download preferences are configured and each discovered addon is presented using its `name` and `description` and invoked through `addon.setup(...)`. When setup questions have finished, ambiguous channel-name results are presented for explicit user selection.
 
 ---
 

@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from ytsubs.addons.focus import FocusAddon, parse_days, parse_ranges
+from ytsubs.core.addons import SetupPrompts
 from ytsubs.core.app import App
 from ytsubs.core.models import Video, VideoListContext
 from ytsubs.core.store import Store
@@ -85,6 +86,21 @@ class FocusAddonTests(unittest.TestCase):
         self.store.set_addon_enabled(self.addon.name, False)
         self.assertTrue(self.addon.command_allowed("latest", ["5"], True, datetime(2026, 5, 25, 12, 0)))
         self.assertTrue(self.addon.enabled)
+
+    def test_import_warns_before_restoring_invincible_mode(self) -> None:
+        output: list[str] = []
+        payload = {
+            "enabled": True,
+            "config": {"invincible": "on", "pending": '{"seconds":{"value":"0"}}'},
+        }
+        self.addon.write_pending({"seconds": {"value": "60", "effective_at": "2026-05-28 05:00"}})
+        ui = SetupPrompts(input_fn=lambda prompt: "n", print_fn=output.append)
+        self.addon.import_config_snapshot(payload, ui)
+
+        self.assertFalse(self.addon.invincible_enabled())
+        self.assertIsNone(self.store.get_config(self.addon.name, "pending"))
+        self.assertIn("WARNING: Invincible mode", "\n".join(output))
+        self.assertIn("  Invincible mode was not restored.", output)
 
     def test_key_press_cancels_delay_hook(self) -> None:
         self.store.set_config(self.addon.name, "seconds", "3")

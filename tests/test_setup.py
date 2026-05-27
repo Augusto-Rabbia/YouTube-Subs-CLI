@@ -29,6 +29,7 @@ class _FakeApp:
         self.store = store
         self.yt = yt
         self.download = SimpleNamespace(setup=lambda ui: None)
+        self.configuration = SimpleNamespace(import_file=lambda path, ui: None)
         self.addons = SimpleNamespace(addons={}, installed=lambda: [])
         self.refreshed = False
 
@@ -60,7 +61,7 @@ class SetupWizardTests(unittest.TestCase):
         started = threading.Event()
         finish = threading.Event()
         events: list[str] = []
-        answers = iter(["@channel, @second"])
+        answers = iter(["n", "@channel, @second"])
 
         with tempfile.TemporaryDirectory() as tempdir:
             store = Store(Path(tempdir) / "test.sqlite3")
@@ -100,7 +101,7 @@ class SetupWizardTests(unittest.TestCase):
     def test_addon_setup_finishes_before_ambiguous_channel_selection(self) -> None:
         events: list[str] = []
         output: list[str] = []
-        answers = iter(["ambiguous channel", "2"])
+        answers = iter(["n", "ambiguous channel", "2"])
 
         def read_input(prompt: str) -> str:
             if prompt.startswith("Choose a number"):
@@ -125,6 +126,24 @@ class SetupWizardTests(unittest.TestCase):
             subscriptions = store.list_subscriptions()
             self.assertEqual(len(subscriptions), 1)
             self.assertEqual(subscriptions[0]["handle"], "@two")
+            store.conn.close()
+
+    def test_imported_configuration_completes_setup_without_manual_questions(self) -> None:
+        output: list[str] = []
+        answers = iter(["y", "data/portable.json"])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            store = Store(Path(tempdir) / "test.sqlite3")
+            app = _FakeApp(store, None)
+            app.configuration = SimpleNamespace(
+                import_file=lambda path, ui: SimpleNamespace(subscriptions_added=0)
+            )
+            app.download = SimpleNamespace(setup=lambda ui: self.fail("download setup should be skipped"))
+            wizard = SetupWizard(app, input_fn=lambda prompt: next(answers), print_fn=output.append)
+
+            self.assertTrue(wizard.run())
+            self.assertEqual(store.get_config("core", "setup_complete"), "on")
+            self.assertTrue(any("Setup complete." in message for message in output))
             store.conn.close()
 
 

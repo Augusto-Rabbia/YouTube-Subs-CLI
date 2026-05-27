@@ -39,6 +39,12 @@ class Addon(Protocol):
     def set_config(self, key: str, value: str) -> None:
         ...
 
+    def export_config_snapshot(self) -> dict[str, object]:
+        ...
+
+    def import_config_snapshot(self, payload: object, ui: SetupPrompts) -> None:
+        ...
+
     def command_allowed(self, command: str, args: list[str], access_controlled: bool) -> bool:
         ...
 
@@ -57,6 +63,7 @@ class Addon(Protocol):
 
 class BaseAddon:
     name = "base"
+    storage_namespace: str | None = None
     description = "Base addon"
     default_enabled = False
     help_details: dict[str, dict[str, object]] = {}
@@ -65,8 +72,12 @@ class BaseAddon:
         self.store = store
 
     @property
+    def persistence_namespace(self) -> str:
+        return self.storage_namespace or self.name
+
+    @property
     def enabled(self) -> bool:
-        return self.store.is_addon_enabled(self.name, self.default_enabled)
+        return self.store.is_addon_enabled(self.persistence_namespace, self.default_enabled)
 
     def require_enabled(self, command_name: str | None = None) -> bool:
         if self.enabled:
@@ -76,11 +87,11 @@ class BaseAddon:
         return False
 
     def enable(self) -> None:
-        self.store.set_addon_enabled(self.name, True)
+        self.store.set_addon_enabled(self.persistence_namespace, True)
         print(f"Addon {self.name} enabled.")
 
     def disable(self) -> None:
-        self.store.set_addon_enabled(self.name, False)
+        self.store.set_addon_enabled(self.persistence_namespace, False)
         print(f"Addon {self.name} disabled.")
 
     def setup(self, ui: SetupPrompts) -> None:
@@ -115,7 +126,7 @@ class BaseAddon:
         rows = list(
             self.store.conn.execute(
                 "SELECT key, value FROM addon_config WHERE addon_name = ? ORDER BY key",
-                (self.name,),
+                (self.persistence_namespace,),
             )
         )
         if not rows:
@@ -126,8 +137,32 @@ class BaseAddon:
             print(f"{row['key']} = {row['value']}")
 
     def set_config(self, key: str, value: str) -> None:
-        self.store.set_config(self.name, key, value)
+        self.store.set_config(self.persistence_namespace, key, value)
         print(f"Set {self.name}.{key} = {value}")
+
+    def export_config_snapshot(self) -> dict[str, object]:
+        rows = self.store.conn.execute(
+            "SELECT key, value FROM addon_config WHERE addon_name = ? ORDER BY key",
+            (self.persistence_namespace,),
+        ).fetchall()
+        return {
+            "enabled": self.enabled,
+            "config": {row["key"]: row["value"] for row in rows},
+        }
+
+    def import_config_snapshot(self, payload: object, ui: SetupPrompts) -> None:
+        if not isinstance(payload, dict):
+            ui.print(f"  Skipped invalid settings for addon {self.name!r}.")
+            return
+        enabled = payload.get("enabled")
+        if isinstance(enabled, bool):
+            self.store.set_addon_enabled(self.persistence_namespace, enabled)
+        config = payload.get("config", {})
+        if isinstance(config, dict):
+            for key, value in config.items():
+                if isinstance(key, str) and isinstance(value, str):
+                    self.store.set_config(self.persistence_namespace, key, value)
+        ui.print(f"  Imported settings for addon {self.name}.")
 
     def command_allowed(self, command: str, args: list[str], access_controlled: bool) -> bool:
         return True
@@ -263,6 +298,22 @@ class AddonManager:
 
     def installed(self) -> list[BaseAddon]:
         return sorted(self.addons.values(), key=lambda addon: addon.name)
+
+    def export_config_snapshot(self) -> dict[str, object]:
+        return {addon.name: addon.export_config_snapshot() for addon in self.installed()}
+
+    def import_config_snapshot(self, payload: object, ui: SetupPrompts) -> None:
+        if not isinstance(payload, dict):
+            ui.print("Skipped invalid addon settings section.")
+            return
+        for name, data in payload.items():
+            if not isinstance(name, str):
+                continue
+            addon = self.addons.get(name)
+            if addon is None:
+                ui.print(f"  Skipped settings for unavailable addon {name!r}.")
+                continue
+            addon.import_config_snapshot(data, ui)
 
     def command_allowed(self, command: str, args: list[str], access_controlled: bool) -> bool:
         for addon in self.addons.values():

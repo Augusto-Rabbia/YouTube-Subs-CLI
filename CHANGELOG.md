@@ -11,6 +11,7 @@
 - Refactored setup, help metadata, access control, discovery, and addon-specific storage around addon-owned interfaces; adding an addon now requires only its `.py` file.
 - Promoted downloading from an addon into built-in app functionality with integrated commands, setup, help, and list-index handling.
 - Renamed the DeArrow addon and command to `anti-clickbait`, with optional `shift-caps` title capitalization.
+- Added portable `config export` backups and setup-time restoration, with addon-owned configuration snapshots and focus invincible-mode restore warnings.
 
 ## 0.4.0 - 2026-05-26
 

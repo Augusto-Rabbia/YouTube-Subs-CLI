@@ -439,6 +439,13 @@ class Store:
         )
         self.conn.commit()
 
+    def delete_config(self, addon_name: str, key: str) -> None:
+        self.conn.execute(
+            "DELETE FROM addon_config WHERE addon_name = ? AND key = ?",
+            (addon_name, key),
+        )
+        self.conn.commit()
+
     def get_cache(self, addon_name: str, key: str) -> str | None:
         row = self.conn.execute(
             "SELECT value FROM addon_cache WHERE addon_name = ? AND key = ?",
