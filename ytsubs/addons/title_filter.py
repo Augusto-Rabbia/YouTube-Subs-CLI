@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from ytsubs.core.addons import AddonRegistry, BaseAddon
+from ytsubs.core.addons import AddonRegistry, BaseAddon, SetupPrompts
 from ytsubs.core.models import Video, VideoListContext
 from ytsubs.core.util import debug_log
 
@@ -13,13 +14,43 @@ class TitleFilterAddon(BaseAddon):
     name = "title-filter"
     description = "Filter out videos by original title regex matching or filter out YouTube Shorts."
     default_enabled = True
+    help_details = {
+        "title-filter": {
+            "summary": "Filter videos by title regex or Shorts.",
+            "usage": "title-filter setup|on|off|cfg [help|KEY VALUE]",
+            "details": (
+                "  - title-filter setup      - Run this addon's guided setup.\n"
+                "  - filter add <regex>      - Add a title exclusion pattern.\n"
+                "  - filter list             - Show patterns and Shorts filtering status.\n"
+                "  - filter cfg filter_shorts <on|off> - Toggle hiding Shorts."
+            ),
+            "examples": ["title-filter setup", "filter add (?i)reaction|unboxing", "filter cfg filter_shorts on"],
+        },
+        "filter": {
+            "summary": "Filter videos by title regex or Shorts.",
+            "usage": "filter add REGEX | rm NUMBER | clear | list | on | off | setup | cfg [help|KEY VALUE]",
+            "details": (
+                "  - filter setup            - Run the title-filter setup.\n"
+                "  - filter add <regex>      - Add a title exclusion pattern.\n"
+                "  - filter list             - Show patterns and Shorts filtering status.\n"
+                "  - filter cfg filter_shorts <on|off> - Toggle hiding Shorts."
+            ),
+            "examples": ["filter setup", "filter add (?i)reaction|unboxing", "filter cfg filter_shorts on"],
+        },
+    }
 
     def register_commands(self, registry: AddonRegistry) -> None:
         registry.command(
             "filter",
             self.command,
-            "filter add REGEX|rm NUMBER|clear|list|on|off|cfg [help|KEY VALUE]",
+            "filter add REGEX|rm NUMBER|clear|list|on|off|setup|cfg [help|KEY VALUE]",
             addon_name=self.name
+        )
+        registry.command(
+            self.name,
+            self.command,
+            "title-filter setup|on|off|cfg [help|KEY VALUE]",
+            addon_name=self.name,
         )
 
     def command(self, args: list[str]) -> None:
@@ -33,11 +64,11 @@ class TitleFilterAddon(BaseAddon):
         rest = args[1:]
 
         if action in {"on", "enable"}:
-            self.store.set_addon_enabled(self.name, True)
-            print("Filter addon enabled.")
+            self.enable()
         elif action in {"off", "disable"}:
-            self.store.set_addon_enabled(self.name, False)
-            print("Filter addon disabled.")
+            self.disable()
+        elif action == "setup":
+            self.run_setup_command(rest)
         elif action == "add":
             pattern = " ".join(rest).strip()
             if not pattern:
@@ -49,11 +80,11 @@ class TitleFilterAddon(BaseAddon):
             except re.error as exc:
                 print(f"Invalid regex: {exc}")
                 return
-            self.store.add_title_filter(pattern)
+            self.add_title_filter(pattern)
             self.store.set_addon_enabled(self.name, True)
             print("Filter added.")
         elif action in {"list", "ls"}:
-            rows = self.store.list_title_filters()
+            rows = self.list_title_filters()
             shorts_status = self.store.get_config(self.name, "filter_shorts", "off")
             print(f"Shorts filtering: {shorts_status}")
             if not rows:
@@ -67,10 +98,10 @@ class TitleFilterAddon(BaseAddon):
             if not rest or not rest[0].isdigit():
                 print("Usage: filter rm NUMBER")
                 return
-            removed = self.store.remove_title_filter_by_position(int(rest[0]))
+            removed = self.remove_title_filter_by_position(int(rest[0]))
             print("Filter removed." if removed else "No filter with that number.")
         elif action == "clear":
-            count = self.store.clear_title_filters()
+            count = self.clear_title_filters()
             print(f"Removed {count} filters.")
         elif action == "cfg":
             if len(args) == 1:
@@ -96,7 +127,60 @@ class TitleFilterAddon(BaseAddon):
             else:
                 print(f"Unknown configuration key: {sub}")
         else:
-            print("Usage: filter add REGEX|rm NUMBER|clear|list|on|off|cfg [help|KEY VALUE]")
+            print("Usage: filter add REGEX|rm NUMBER|clear|list|on|off|setup|cfg [help|KEY VALUE]")
+
+    def setup(self, ui: SetupPrompts) -> None:
+        if not self.setup_enabled(ui):
+            return
+        shorts = self.store.get_config(self.name, "filter_shorts", "off") == "on"
+        enabled = ui.ask_yes_no("  Hide YouTube Shorts from video lists?", shorts)
+        self.store.set_config(self.name, "filter_shorts", "on" if enabled else "off")
+        if not ui.ask_yes_no("  Add title words or regex patterns to hide now?", False):
+            return
+        ui.print("  Enter one pattern per line; press Enter when finished.")
+        while True:
+            pattern = ui.input("  Hidden-title pattern: ").strip()
+            if not pattern:
+                return
+            self.command(["add", pattern])
+
+    def print_config(self) -> None:
+        self.command(["cfg"])
+
+    def set_config(self, key: str, value: str) -> None:
+        self.command(["cfg", key, value])
+
+    def add_title_filter(self, pattern: str) -> int:
+        patterns = self.title_filters()
+        patterns.append(pattern)
+        self.store.set_config(self.name, "patterns", json.dumps(patterns))
+        return len(patterns)
+
+    def list_title_filters(self) -> list:
+        return [{"pattern": pattern, "enabled": True} for pattern in self.title_filters()]
+
+    def remove_title_filter_by_position(self, position: int) -> bool:
+        patterns = self.title_filters()
+        if position < 1 or position > len(patterns):
+            return False
+        patterns.pop(position - 1)
+        self.store.set_config(self.name, "patterns", json.dumps(patterns))
+        return True
+
+    def clear_title_filters(self) -> int:
+        patterns = self.title_filters()
+        self.store.set_config(self.name, "patterns", "[]")
+        return len(patterns)
+
+    def title_filters(self) -> list[str]:
+        raw = self.store.get_config(self.name, "patterns", "[]") or "[]"
+        try:
+            patterns = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(patterns, list):
+            return []
+        return [pattern for pattern in patterns if isinstance(pattern, str)]
 
     def _check_if_short_http(self, video_id: str) -> bool | None:
         url = f"https://www.youtube.com/shorts/{video_id}"
@@ -163,7 +247,7 @@ class TitleFilterAddon(BaseAddon):
 
     def filter_videos(self, ctx: VideoListContext, videos: list[Video]) -> list[Video]:
         debug_log(2, f"title-filter: filter_videos checking {len(videos)} videos")
-        rows = [row for row in self.store.list_title_filters() if row["enabled"]]
+        rows = [row for row in self.list_title_filters() if row["enabled"]]
         if rows:
             debug_log(2, f"title-filter: applying {len(rows)} regex filters")
             compiled: list[re.Pattern[str]] = []

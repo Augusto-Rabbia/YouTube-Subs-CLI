@@ -4,7 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 import sqlite3
 
-from .addons import AddonManager, AddonRegistry
+from .addons import AddonManager
+from .commands import CommandRegistry
+from .download import DownloadService
 from .metadata import VideoMetadataService
 from .models import Video, VideoListContext, fmt_date, fmt_duration, parse_datetime, utcnow
 from .paths import db_path, normalize_profile_name
@@ -21,6 +23,7 @@ class App:
         self.yt = YouTubeClient()
         self.metadata = VideoMetadataService(self.store, self.yt)
         self.last_videos: list[Video] = []
+        self.download = DownloadService(self.store)
         self.addons = AddonManager(self.store)
         self.registry = self.addons.registry
 
@@ -35,27 +38,30 @@ class App:
     def _set_store(self, store: Store) -> None:
         self.store = store
         self.metadata.store = store
+        self.download.store = store
         self.addons.store = store
         for addon in self.addons.addons.values():
             addon.store = store
 
-    def _register_core_commands(self, registry: AddonRegistry) -> None:
-        registry.command("sub", self.sub, "sub list|add|search|rm|category list|category add|category rm")
+    def _register_core_commands(self, registry: CommandRegistry) -> None:
+        registry.command("sub", self.sub, "sub list|add|search|rm|category list|category add|category rm", access_controlled=True)
         registry.command("profile", self.profile_command, "profile list|switch NAME|create NAME|current")
-        registry.command("new", self.new, "new [DAYSd] | new default [DAYSd]")
-        registry.command("latest", self.latest, "latest COUNT|DAYSd [CHANNEL]")
-        registry.command("watch", self.watch, "watch NUMBER [NUMBER...] | VIDEO_ID_OR_URL [...] | DATE+ | all")
-        registry.command("w", self.watch, "w NUMBER [NUMBER...] | VIDEO_ID_OR_URL [...] | DATE+ | all")
-        registry.command("refresh", lambda args: self.refresh(), "refresh")
+        registry.command("new", self.new, "new [DAYSd] | new default [DAYSd]", access_controlled=lambda args: not (args and args[0].lower() == "default"))
+        registry.command("latest", self.latest, "latest COUNT|DAYSd [CHANNEL]", access_controlled=True)
+        registry.command("watch", self.watch, "watch NUMBER [NUMBER...] | VIDEO_ID_OR_URL [...] | DATE+ | all", access_controlled=True)
+        registry.command("w", self.watch, "w NUMBER [NUMBER...] | VIDEO_ID_OR_URL [...] | DATE+ | all", access_controlled=True)
+        registry.command("refresh", lambda args: self.refresh(), "refresh", access_controlled=True)
+        self.download.register_commands(registry)
         registry.command("addon", self.addon_command, "addon list|enable NAME|disable NAME|set NAME KEY VALUE|config NAME")
+        registry.command("setup", self.setup_command, "setup", access_controlled=True)
         registry.command("purge", self.purge, "purge [DAYSd]")
         registry.command("debug", self.debug_command, "debug [on|off|0|1|2]")
 
         # Aliases / Shortcuts
-        registry.command("s", self.sub, "s list|add|search|rm|category list|category add|category rm")
-        registry.command("n", self.new, "n [DAYSd] | n default [DAYSd]")
-        registry.command("l", self.latest, "l COUNT|DAYSd [CHANNEL]")
-        registry.command("r", lambda args: self.refresh(), "r")
+        registry.command("s", self.sub, "s list|add|search|rm|category list|category add|category rm", access_controlled=True)
+        registry.command("n", self.new, "n [DAYSd] | n default [DAYSd]", access_controlled=lambda args: not (args and args[0].lower() == "default"))
+        registry.command("l", self.latest, "l COUNT|DAYSd [CHANNEL]", access_controlled=True)
+        registry.command("r", lambda args: self.refresh(), "r", access_controlled=True)
         registry.command("p", self.profile_command, "p list|switch NAME|create NAME|current")
 
     def debug_command(self, args: list[str]) -> None:
@@ -93,9 +99,7 @@ class App:
         if not spec:
             print("Unknown command. Type `help`.")
             return
-        focus_addon = self.addons.addons.get("focus")
-        gate = getattr(focus_addon, "command_allowed", None)
-        if callable(gate) and not gate(command, args):
+        if not self.addons.command_allowed(command, args, spec.requires_access(args)):
             return
         spec.handler(args)
 
@@ -116,11 +120,7 @@ class App:
             if name not in self.addons.addons:
                 print(f"No addon named {name!r}.")
                 return
-            if name == "focus":
-                self.addons.addons[name].command(["on"])
-                return
-            self.store.set_addon_enabled(name, True)
-            print(f"Addon {name} enabled.")
+            self.addons.addons[name].enable()
         elif action in {"disable", "off"}:
             if not rest:
                 print("Usage: addon disable NAME")
@@ -129,11 +129,7 @@ class App:
             if name not in self.addons.addons:
                 print(f"No addon named {name!r}.")
                 return
-            if name == "focus":
-                self.addons.addons[name].command(["off"])
-                return
-            self.store.set_addon_enabled(name, False)
-            print(f"Addon {name} disabled.")
+            self.addons.addons[name].disable()
         elif action == "set":
             if len(rest) < 3:
                 print("Usage: addon set NAME KEY VALUE")
@@ -143,33 +139,26 @@ class App:
             if name not in self.addons.addons:
                 print(f"No addon named {name!r}.")
                 return
-            if name == "focus":
-                print("Manage focus settings with `focus cfg`, `focus schedule`, and `focus invincible`.")
-                return
-            self.store.set_config(name, key, value)
-            print(f"Set {name}.{key} = {value}")
+            self.addons.addons[name].set_config(key, value)
         elif action == "config":
             if not rest:
                 print("Usage: addon config NAME")
                 return
             name = rest[0]
-            if name == "focus":
-                self.addons.addons[name].command([])
+            if name not in self.addons.addons:
+                print(f"No addon named {name!r}.")
                 return
-            rows = list(
-                self.store.conn.execute(
-                    "SELECT key, value FROM addon_config WHERE addon_name = ? ORDER BY key",
-                    (name,),
-                )
-            )
-            if not rows:
-                print(f"No config stored for {name}.")
-                return
-            print(f"Config for {name}:")
-            for row in rows:
-                print(f"{row['key']} = {row['value']}")
+            self.addons.addons[name].print_config()
         else:
             print("Usage: addon list|enable NAME|disable NAME|set NAME KEY VALUE|config NAME")
+
+    def setup_command(self, args: list[str]) -> None:
+        if args:
+            print("Usage: setup")
+            return
+        from .setup import SetupWizard
+
+        SetupWizard(self).run(require_confirmation=True)
 
     # Subscription commands
     def sub(self, args: list[str]) -> None:
@@ -750,6 +739,7 @@ class App:
             else:
                 print(f"No new unwatched videos in the last {days} days.")
             self.last_videos = []
+            self.download.cache_video_list([])
             debug_log(2, "Invoking addons after_video_list hook for empty results")
             self.addons.after_video_list(ctx, [])
             return
@@ -825,6 +815,7 @@ class App:
         if not videos:
             print("No videos found.")
             self.last_videos = []
+            self.download.cache_video_list([])
             debug_log(2, "Invoking addons after_video_list hook for empty results")
             self.addons.after_video_list(ctx, [])
             return
@@ -837,6 +828,7 @@ class App:
         if not filtered:
             self.last_videos = []
             print(empty_message)
+            self.download.cache_video_list([])
             debug_log(2, "Invoking addons after_video_list hook for empty filtered results")
             self.addons.after_video_list(ctx, [])
             return
@@ -862,6 +854,7 @@ class App:
                 f'{i}. {video.channel_name} ({fmt_date(video.published_at)}): '
                 f'"{title}" {fmt_duration(video.duration_seconds)} {video.share_url}'
             )
+        self.download.cache_video_list(filtered)
         debug_log(2, "Invoking addons after_video_list hook")
         self.addons.after_video_list(ctx, filtered)
 

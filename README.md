@@ -18,7 +18,7 @@ It gives you a deliberate way to use YouTube:
 - **An inbox, not a feed**: `new` and `latest` show subscribed uploads directly, with timestamps, duration, and watched tracking.
 - **Your own organization**: Profiles separate contexts such as study and entertainment; categories let you query only what matters right now.
 - **Attention controls built in**: `focus` supports delays, daily access windows, and an optional invincible mode for commitments you cannot immediately undo.
-- **Less clickbait and noise**: Filter titles and Shorts, or use DeArrow titles when available.
+- **Less clickbait and noise**: Filter titles and Shorts, or use DeArrow titles with optional Shift Caps formatting.
 - **Take videos with you**: Download selected items with embedded metadata, chapters, quality controls, and optional SponsorBlock processing.
 - **Private by default**: It works locally from public YouTube data and does not require browser sign-in or an API key.
 
@@ -68,6 +68,21 @@ If you prefer to run the application natively on Unix:
 # Run commands directly
 ./scripts/run_linux.sh latest 5
 ```
+
+## Guided Setup
+
+On first launch, YTSubs starts an interactive setup wizard. It asks for your comma-separated channel list first, then resolves those channels in the background while you configure downloads and choose addons. After configuration questions, it tells you when a channel name produced multiple matches and lets you select each subscription explicitly.
+
+The wizard can configure:
+
+- subscriptions entered as `@handles`, channel IDs, URLs, or plain-text channel names;
+- downloads, including destination folder, video container, quality, watched tracking, and SponsorBlock actions;
+- Shorts/title filtering and DeArrow title display;
+- focus delays, weekly access schedules, and optional invincible mode.
+
+Run `setup` later to revisit the wizard; because it can alter existing settings, rerunning it requires typing `ok` first.
+
+Downloading is built into the application and can be reconfigured independently with `download setup`. Each optional addon owns its guided configuration and can be configured independently with `title-filter setup`, `dearrow setup`, or `focus setup`.
 
 ## Usage Tutorial
 
@@ -164,6 +179,15 @@ Set title-filter.filter_shorts = on
 > new
 ```
 
+Downloads can be stored in a directory you choose:
+```text
+> download cfg directory downloads/courses
+> download cfg container mp4
+> download cfg quality 1080p
+```
+
+In Docker, keep configured download destinations under `downloads/` so they are available in the mounted host folder.
+
 ### 5. Marking Videos as Watched
 Track read status to keep your feed clean.
 ```text
@@ -195,7 +219,7 @@ The `focus` addon can delay video lists and restrict commands that show videos o
 > focus schedule clear fri-sun
 ```
 
-Protected actions are `sub`, `new`, `latest`, `watch`, `refresh`, and `download`/`dl`. Configuration and help commands remain available.
+Protected actions are `sub`, `setup`, `new`, `latest`, `watch`, `refresh`, and `download`/`dl`. Configuration and help commands remain available.
 
 **Invincible mode**: Be in control of your own life. When on, your focus settings will be impulse-safe: Any changes will take effect only at 05:00 local time on the following day. Configure the intended schedule before confirming invincible mode.
 

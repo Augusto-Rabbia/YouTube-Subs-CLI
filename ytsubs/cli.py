@@ -8,6 +8,7 @@ from typing import Optional
 from . import __version__
 from .core.app import App
 from .core.paths import ensure_project_dirs
+from .core.setup import SetupWizard
 
 
 HELP_DETAILS = {
@@ -92,6 +93,33 @@ HELP_DETAILS = {
             "w 2026-06-26+"
         ]
     },
+    "download": {
+        "summary": "Download videos for offline viewing using yt-dlp.",
+        "usage": "download TARGET... | setup | cfg [help|KEY VALUE]",
+        "details": (
+            "  Download videos with embedded metadata and chapters.\n"
+            "  - download <index|url|id>       - Download a listed video, URL, or video ID.\n"
+            "  - download setup                - Run guided download configuration.\n"
+            "  - download cfg directory <path> - Choose where downloaded media is stored.\n"
+            "  - download cfg quality <q>      - Set quality such as best, 1080p, or 720p.\n"
+            "  - download cfg container <c>    - Set output container: mkv, mp4, or webm.\n"
+            "  - download cfg sponsorblock     - Configure SponsorBlock actions."
+        ),
+        "examples": [
+            "download setup",
+            "download 1",
+            "download cfg directory downloads/courses",
+        ],
+    },
+    "dl": {
+        "summary": "Alias for download.",
+        "usage": "dl TARGET...",
+        "details": "  Accepts identical download targets as the `download` command.",
+        "examples": [
+            "dl 1",
+            "dl 2 3",
+        ],
+    },
     "refresh": {
         "summary": "Refresh subscriptions feed.",
         "usage": "refresh",
@@ -112,99 +140,19 @@ HELP_DETAILS = {
         ),
         "examples": [
             "addon list",
-            "addon enable download",
-            "addon set download quality 720p",
-            "addon config download"
+            "addon enable your-addon",
+            "addon config your-addon"
         ]
     },
-    "focus": {
-        "summary": "Delay or schedule access to subscription and video actions.",
-        "usage": "focus on|off|cfg [help|seconds N]|schedule ...|invincible on|off",
+    "setup": {
+        "summary": "Run the guided first-time configuration again.",
+        "usage": "setup",
         "details": (
-            "  - focus cfg seconds <n>    - Wait before showing video lists; any key cancels the request.\n"
-            "  - focus schedule list      - Display active local-time access rules.\n"
-            "  - focus schedule set <days> allow <ranges> - Permit protected actions only in windows.\n"
-            "  - focus schedule set <days> block <ranges> - Block protected actions in windows.\n"
-            "  - focus schedule clear <days|all>          - Remove rules for selected days.\n"
-            "  - focus invincible on      - Enable protected focus mode after a prominent confirmation warning.\n"
-            "  - focus invincible off     - Schedule focus and invincible shutdown for next-day 05:00.\n"
-            "  DAYS examples: mon-thu, weekdays, weekends, mon,wed,fri. Ranges use HH:MM-HH:MM.\n"
-            "  Protected actions: sub, new, latest, watch, refresh, and video downloads."
+            "  Starts the setup wizard after you confirm by typing `ok`.\n"
+            "  The wizard adds subscriptions, configures downloading, and calls each installed addon's own setup flow."
         ),
         "examples": [
-            "focus on",
-            "focus cfg seconds 45",
-            "focus schedule set mon-thu allow 16:00-18:00,20:00-21:00",
-            "focus schedule clear fri-sun",
-            "focus invincible on"
-        ]
-    },
-    "filter": {
-        "summary": "Filter videos by title regex or shorts.",
-        "usage": "filter add REGEX | rm NUMBER | clear | list | on | off | cfg [help|KEY VALUE]",
-        "details": (
-            "  Configure video filtering for the `title-filter` addon.\n"
-            "  - filter add <regex>       - Add python regex title exclusion (e.g. matches are hidden).\n"
-            "  - filter list              - Show active regex filters.\n"
-            "  - filter rm <number>       - Remove regex filter by position number in list.\n"
-            "  - filter clear             - Remove all title regex filters.\n"
-            "  - filter on/off            - Toggle entire title-filter addon.\n"
-            "  - filter cfg               - Display current title-filter configurations.\n"
-            "  - filter cfg filter_shorts <on|off> - Toggle hiding YouTube Shorts from the feeds."
-        ),
-        "examples": [
-            "filter list",
-            "filter add (?i)reaction|unboxing",
-            "filter cfg filter_shorts on",
-            "filter cfg filter_shorts off",
-            "filter rm 1"
-        ]
-    },
-    "dearrow": {
-        "summary": "Replace clickbait titles with trusted DeArrow titles.",
-        "usage": "dearrow on | off | cfg [help|KEY VALUE]",
-        "details": (
-            "  Configure clickbait title replacement for the `dearrow` addon.\n"
-            "  - dearrow on/off           - Toggle entire dearrow addon.\n"
-            "  - dearrow cfg              - Display current configuration.\n"
-            "  - dearrow cfg mode <mode>  - Set mode (original, replaced, or both).\n"
-            "  - dearrow cfg help         - Display dearrow configuration options."
-        ),
-        "examples": [
-            "dearrow on",
-            "dearrow cfg",
-            "dearrow cfg mode both",
-            "dearrow cfg mode replaced"
-        ]
-    },
-    "download": {
-        "summary": "Download videos using yt-dlp.",
-        "usage": "download TARGET... | on | off | cfg [help|KEY VALUE]",
-        "details": (
-            "  Download videos using yt-dlp, metadata embedding, and chapters.\n"
-            "  - download <index|url|id>   - Download video matching index, URL, or ID.\n"
-            "  - download on/off           - Toggle entire download addon.\n"
-            "  - download cfg              - Print current downloader configuration.\n"
-            "  - download cfg quality <q>  - Set download quality (e.g. best, 1080p, 720p, 480p).\n"
-            "  - download cfg container <c>- Set output file container (mkv, mp4, webm).\n"
-            "  - download cfg auto_watch <on|off> - Automatically mark downloaded videos as watched.\n"
-            "  - download cfg sponsorblock - Launch interactive setup wizard for SponsorBlock categories."
-        ),
-        "examples": [
-            "download 1",
-            "download cfg",
-            "download cfg quality 1080p",
-            "download cfg sponsorblock",
-            "download cfg auto_watch off"
-        ]
-    },
-    "dl": {
-        "summary": "Alias for download.",
-        "usage": "dl TARGET...",
-        "details": "  Accepts identical arguments as the `download` command.",
-        "examples": [
-            "dl 1",
-            "dl 2 3"
+            "setup"
         ]
     },
     "profile": {
@@ -285,6 +233,18 @@ class Shell(cmd.Cmd):
     def emptyline(self) -> None:
         return None
 
+    def help_details(self, command: str) -> dict[str, object] | None:
+        info = HELP_DETAILS.get(command)
+        if info is not None:
+            return info
+        spec = self.app.registry.commands.get(command)
+        if spec is None or spec.addon_name is None:
+            return None
+        addon = self.app.addons.addons.get(spec.addon_name)
+        if addon is None:
+            return None
+        return addon.help_details.get(command)
+
     def do_help(self, arg: str) -> None:  # noqa: D401 - cmd signature
         arg = arg.strip().lower()
         if arg:
@@ -295,12 +255,13 @@ class Shell(cmd.Cmd):
                 "r": "refresh",
                 "p": "profile",
                 "w": "watch",
+                "dl": "download",
             }
             if arg in shortcut_map:
                 arg = shortcut_map[arg]
 
-            if arg in HELP_DETAILS:
-                info = HELP_DETAILS[arg]
+            info = self.help_details(arg)
+            if info is not None:
                 print(f"Command: {arg}")
                 print(f"Summary: {info['summary']}")
                 print(f"Usage:   {info['usage']}")
@@ -327,8 +288,10 @@ class Shell(cmd.Cmd):
             ("n", "new"),
             ("l", "latest"),
             ("w", "watch"),
+            ("dl", "download"),
             ("r", "refresh"),
             (None, "addon"),
+            (None, "setup"),
             ("p", "profile"),
             (None, "purge"),
             (None, "debug"),
@@ -343,32 +306,23 @@ class Shell(cmd.Cmd):
             usage = HELP_DETAILS.get(cmd_name, {}).get("usage", cmd_name)
             print(f"  {bold_padded} - {summary} (Usage: {usage})")
 
-        addon_commands = [spec for spec in self.app.registry.commands.values() if spec.addon_name]
-        if addon_commands:
+        addons = self.app.addons.installed()
+        if addons:
             print("\nAddon Commands:")
-            # Group by addon_name to deduplicate and identify short names
-            groups = {}
-            for spec in addon_commands:
-                groups.setdefault(spec.addon_name, []).append(spec.name)
-
-            seen_addons = set()
-            for spec in sorted(addon_commands, key=lambda s: s.name):
-                addon_name = spec.addon_name
-                if addon_name in seen_addons:
-                    continue
-                seen_addons.add(addon_name)
-
-                # Sort by length then name (e.g. ['dl', 'download'])
-                names = sorted(groups[addon_name], key=lambda x: (len(x), x))
+            for addon in addons:
+                specs = [
+                    spec
+                    for spec in self.app.registry.commands.values()
+                    if spec.addon_name == addon.name
+                ]
+                names = sorted((spec.name for spec in specs), key=lambda x: (len(x), x))
                 label_raw = ", ".join(names)
                 padded = f"{label_raw:<12}"
                 bold_padded = f"\033[1m{padded}\033[0m"
-
-                # Longest name is canonical
-                canonical_name = names[-1]
-                summary = HELP_DETAILS.get(canonical_name, {}).get("summary", "")
-                usage = HELP_DETAILS.get(canonical_name, {}).get("usage", spec.help)
-                print(f"  {bold_padded} - {summary or spec.help} (Usage: {usage})")
+                info = addon.help_details.get(addon.name, {})
+                spec = self.app.registry.commands.get(addon.name) or specs[0]
+                usage = info.get("usage", spec.help)
+                print(f"  {bold_padded} - {addon.description} (Usage: {usage})")
 
         print("\nTip: Type `help <command>` (e.g. `help watch`, `help filter`) for details and examples.")
         print("Options: --profile NAME, --help, --version")
@@ -431,6 +385,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
+    first_command = argv[0].lower() if argv else None
+    if first_command not in {"help", "setup"} and not SetupWizard(app).is_complete():
+        if not app.addons.command_allowed("setup", [], True):
+            return 1
+        if not sys.stdin.isatty():
+            print("Initial setup is required. Run `setup` from an interactive terminal.", file=sys.stderr)
+            return 2
+        if not SetupWizard(app).run():
+            return 1
+
     shell = Shell(app)
 
     if not argv or argv[0] == "run":

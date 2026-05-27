@@ -12,7 +12,6 @@ DATA_DIR = PROJECT_ROOT / "data"
 CACHE_DIR = PROJECT_ROOT / ".cache"
 CONFIG_DIR = PROJECT_ROOT / ".config"
 MODS_DIR = PROJECT_ROOT / "mods"
-DOWNLOADS_DIR = PROJECT_ROOT / "downloads"
 
 
 def ensure_project_dirs() -> None:
@@ -20,7 +19,6 @@ def ensure_project_dirs() -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     MODS_DIR.mkdir(parents=True, exist_ok=True)
-    DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def normalize_profile_name(name: str) -> str:

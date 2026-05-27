@@ -85,13 +85,6 @@ class Store:
                     PRIMARY KEY(addon_name, key)
                 );
 
-                CREATE TABLE IF NOT EXISTS title_filters (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    pattern TEXT NOT NULL,
-                    enabled INTEGER NOT NULL DEFAULT 1,
-                    added_at TEXT NOT NULL
-                );
-
                 CREATE TABLE IF NOT EXISTS channel_search_results (
                     position INTEGER PRIMARY KEY,
                     channel_id TEXT NOT NULL,
@@ -470,31 +463,6 @@ class Store:
             "DELETE FROM addon_cache WHERE addon_name = ? AND key LIKE ?",
             (addon_name, prefix + "%"),
         )
-        self.conn.commit()
-        return cur.rowcount
-
-    # Title filters
-    def add_title_filter(self, pattern: str) -> int:
-        cur = self.conn.execute(
-            "INSERT INTO title_filters(pattern, enabled, added_at) VALUES (?, 1, ?)",
-            (pattern, utcnow().isoformat()),
-        )
-        self.conn.commit()
-        return int(cur.lastrowid)
-
-    def list_title_filters(self) -> list[sqlite3.Row]:
-        return list(self.conn.execute("SELECT id, pattern, enabled, added_at FROM title_filters ORDER BY id"))
-
-    def remove_title_filter_by_position(self, position: int) -> bool:
-        rows = self.list_title_filters()
-        if position < 1 or position > len(rows):
-            return False
-        self.conn.execute("DELETE FROM title_filters WHERE id = ?", (rows[position - 1]["id"],))
-        self.conn.commit()
-        return True
-
-    def clear_title_filters(self) -> int:
-        cur = self.conn.execute("DELETE FROM title_filters")
         self.conn.commit()
         return cur.rowcount
 

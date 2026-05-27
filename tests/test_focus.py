@@ -38,11 +38,12 @@ class FocusAddonTests(unittest.TestCase):
         blocked_time = datetime(2026, 5, 25, 15, 0)
         allowed_time = datetime(2026, 5, 25, 16, 0)
         with redirect_stdout(io.StringIO()):
-            self.assertFalse(self.addon.command_allowed("latest", ["5"], blocked_time))
-            self.assertFalse(self.addon.command_allowed("download", ["1"], blocked_time))
-        self.assertTrue(self.addon.command_allowed("latest", ["5"], allowed_time))
-        self.assertTrue(self.addon.command_allowed("download", ["cfg"], blocked_time))
-        self.assertTrue(self.addon.command_allowed("new", ["default"], blocked_time))
+            self.assertFalse(self.addon.command_allowed("latest", ["5"], True, blocked_time))
+            self.assertFalse(self.addon.command_allowed("download", ["1"], True, blocked_time))
+            self.assertFalse(self.addon.command_allowed("setup", [], True, blocked_time))
+        self.assertTrue(self.addon.command_allowed("latest", ["5"], True, allowed_time))
+        self.assertTrue(self.addon.command_allowed("download", ["cfg"], False, blocked_time))
+        self.assertTrue(self.addon.command_allowed("new", ["default"], False, blocked_time))
 
     def test_invincible_defers_changes_and_shutdown_until_effective_time(self) -> None:
         output = io.StringIO()
@@ -82,7 +83,7 @@ class FocusAddonTests(unittest.TestCase):
     def test_invincible_restores_focus_enablement_before_access_checks(self) -> None:
         self.store.set_config(self.addon.name, "invincible", "on")
         self.store.set_addon_enabled(self.addon.name, False)
-        self.assertTrue(self.addon.command_allowed("latest", ["5"], datetime(2026, 5, 25, 12, 0)))
+        self.assertTrue(self.addon.command_allowed("latest", ["5"], True, datetime(2026, 5, 25, 12, 0)))
         self.assertTrue(self.addon.enabled)
 
     def test_key_press_cancels_delay_hook(self) -> None:
@@ -124,6 +125,7 @@ class FocusAddonTests(unittest.TestCase):
         app.store = MagicMock()
         app.metadata = MagicMock()
         app.metadata.with_durations.return_value = [new_video]
+        app.download = MagicMock()
         app.addons = MagicMock()
         app.addons.apply_filters.return_value = [new_video]
         app.addons.before_video_list.return_value = False
@@ -132,6 +134,7 @@ class FocusAddonTests(unittest.TestCase):
             app._print_video_list(VideoListContext("new", "New:"), [new_video], empty_message="No videos.")
 
         self.assertEqual(app.last_videos, [old_video])
+        app.download.cache_video_list.assert_not_called()
         app.store.delete_cache_prefix.assert_not_called()
         app.store.set_cache.assert_not_called()
 

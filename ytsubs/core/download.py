@@ -5,44 +5,53 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
-from ytsubs.core.addons import AddonRegistry, BaseAddon
-from ytsubs.core.models import Video, VideoListContext
-from ytsubs.core.paths import CACHE_DIR, DOWNLOADS_DIR
-from ytsubs.core.util import extract_video_id, debug_log, get_debug_level
+from .commands import CommandRegistry
+from .models import Video
+from .paths import CACHE_DIR, PROJECT_ROOT
+from .prompts import SetupPrompts
+from .store import Store
+from .util import debug_log, extract_video_id, get_debug_level
 
 
 VALID_CONTAINERS = {"mkv", "mp4", "webm"}
 DEFAULT_QUALITY = "1080p"
 DEFAULT_CONTAINER = "mkv"
+NON_DOWNLOAD_ACTIONS = {"on", "enable", "off", "disable", "setup", "cfg", "help", "-h", "--help"}
 
 
 @dataclass(frozen=True)
 class DownloadConfig:
+    directory: Path
     quality: str
     container: str
     auto_watch: bool
     sb_actions: dict[str, str]
 
 
-class DownloadAddon(BaseAddon):
-    name = "download"
-    description = "Download selected videos with yt-dlp, embedded metadata, chapters, and optional SponsorBlock cuts."
-    default_enabled = True
+class DownloadService:
+    namespace = "download"
 
-    def register_commands(self, registry: AddonRegistry) -> None:
+    def __init__(self, store: Store) -> None:
+        self.store = store
+
+    def register_commands(self, registry: CommandRegistry) -> None:
         registry.command(
             "download",
             self.command,
-            "download TARGET...|on|off|cfg [help|KEY VALUE]",
-            addon_name=self.name,
+            "download TARGET...|setup|cfg [help|KEY VALUE]",
+            access_controlled=self.is_access_controlled_action,
         )
         registry.command(
             "dl",
             self.command,
             "dl TARGET...  # alias for download",
-            addon_name=self.name,
+            access_controlled=self.is_access_controlled_action,
         )
+
+    def is_access_controlled_action(self, args: list[str]) -> bool:
+        return bool(args) and args[0].lower() not in NON_DOWNLOAD_ACTIONS
 
     def command(self, args: list[str]) -> None:
         if not args:
@@ -52,19 +61,18 @@ class DownloadAddon(BaseAddon):
         action = args[0].lower().strip()
         rest = args[1:]
 
-        if action in {"on", "enable"}:
-            self.store.set_addon_enabled(self.name, True)
-            print("Download addon enabled.")
-        elif action in {"off", "disable"}:
-            self.store.set_addon_enabled(self.name, False)
-            print("Download addon disabled.")
+        if action in {"on", "enable", "off", "disable"}:
+            print(
+                "Downloading is built into ytsubs and has no addon toggle. "
+                "Focus access restrictions still apply to video downloads."
+            )
+        elif action == "setup":
+            self.run_setup_command(rest)
         elif action == "cfg":
             self.command_cfg(rest)
         elif action in {"help", "-h", "--help"}:
             self.print_usage()
         else:
-            if not self.require_enabled("download"):
-                return
             self.download_targets(args)
 
     def print_usage(self) -> None:
@@ -72,20 +80,66 @@ class DownloadAddon(BaseAddon):
             "Usage:\n"
             "  download NUMBER [NUMBER...]\n"
             "  download VIDEO_ID_OR_URL [VIDEO_ID_OR_URL...]\n"
-            "  download on | off\n"
+            "  download setup\n"
             "  download cfg [help|KEY VALUE]\n"
             "  dl NUMBER [NUMBER...]"
         )
 
+    def run_setup_command(self, args: list[str]) -> None:
+        if args:
+            print("Usage: download setup")
+            return
+        ui = SetupPrompts()
+        try:
+            self.setup(ui)
+            ui.finish()
+        except (KeyboardInterrupt, EOFError):
+            print("\nDownload setup cancelled.")
+
+    def setup(self, ui: SetupPrompts) -> None:
+        config = self.config()
+        ui.print("  In Docker, keep this under `downloads/` so files persist on the host.")
+        directory = ui.input(f"  Download directory [{config.directory}]: ").strip()
+        if directory:
+            self.set_directory(directory)
+            config = self.config()
+        quality = ui.ask_validated(
+            f"  Maximum quality [{config.quality}]: ",
+            config.quality,
+            valid_quality,
+            "Enter `best` or a resolution such as 480p, 720p, or 1080p.",
+        ).lower()
+        self.store.set_config(self.namespace, "quality", quality)
+        container = ui.ask_choice(
+            f"  Video container [{config.container}] (mkv/mp4/webm): ",
+            VALID_CONTAINERS,
+            config.container,
+        )
+        self.store.set_config(self.namespace, "container", container)
+        auto_watch = ui.ask_yes_no("  Mark successful downloads as watched?", config.auto_watch)
+        self.store.set_config(self.namespace, "auto_watch", "on" if auto_watch else "off")
+        if ui.ask_yes_no("  Configure SponsorBlock removal/chapter actions now?", False):
+            self.sponsorblock_wizard(ui)
+
     def command_cfg(self, args: list[str]) -> None:
         if not args:
             config = self.config()
-            print("Download Addon Configuration:")
+            print("Download Configuration:")
+            print(f"  directory = {config.directory}")
             print(f"  quality = {config.quality}")
             print(f"  container = {config.container}")
             print(f"  auto_watch = {'on' if config.auto_watch else 'off'}")
             print("  SponsorBlock category actions:")
-            for cat in ["sponsor", "intro", "outro", "interaction", "selfpromo", "preview", "filler", "music_offtopic"]:
+            for cat in [
+                "sponsor",
+                "intro",
+                "outro",
+                "interaction",
+                "selfpromo",
+                "preview",
+                "filler",
+                "music_offtopic",
+            ]:
                 action = config.sb_actions.get(cat, "off")
                 print(f"    {cat} = {action}")
             return
@@ -93,6 +147,7 @@ class DownloadAddon(BaseAddon):
         key = args[0].lower().strip()
         if key == "help":
             print("Download Configuration Help:")
+            print("  directory: output folder (default: downloads; relative paths use the application root)")
             print("  quality: best | 144p | 240p | 360p | 480p | 720p | 1080p | 1440p | 2160p (default: 1080p)")
             print("  container: mkv | mp4 | webm (default: mkv) - target file format")
             print("  auto_watch: on | off (default: on) - mark downloaded videos as watched automatically")
@@ -107,33 +162,52 @@ class DownloadAddon(BaseAddon):
             print("Usage: download cfg [help|KEY VALUE]")
             return
 
-        val = args[1].lower().strip()
-        if key == "quality":
+        value = " ".join(args[1:]).strip()
+        val = value.lower()
+        if key == "directory":
+            self.set_directory(value)
+        elif key == "quality":
             if not valid_quality(val):
                 print("Error: quality must be 'best' or a height like 480p, 720p, 1080p, etc.")
                 return
-            self.store.set_config(self.name, "quality", val)
+            self.store.set_config(self.namespace, "quality", val)
             print(f"Set download.quality = {val}")
         elif key == "container":
             if val not in VALID_CONTAINERS:
                 print("Error: container must be one of: mkv, mp4, webm")
                 return
-            self.store.set_config(self.name, "container", val)
+            self.store.set_config(self.namespace, "container", val)
             print(f"Set download.container = {val}")
         elif key in {"auto_watch", "autowatch"}:
             if val not in {"on", "off"}:
                 print("Error: auto_watch must be 'on' or 'off'")
                 return
-            self.store.set_config(self.name, "auto_watch", val)
+            self.store.set_config(self.namespace, "auto_watch", val)
             print(f"Set download.auto_watch = {val}")
         else:
             print(f"Unknown configuration key: {key}")
 
-    def sponsorblock_wizard(self) -> None:
-        print("SponsorBlock Category Setup Wizard")
-        print("For each category, choose: cut (remove), mark (add chapters), or off (do nothing).")
-        print("Press Enter to keep the current value.")
-        print("-" * 65)
+    def set_directory(self, value: str) -> bool:
+        value = value.strip()
+        if not value:
+            print("Error: directory cannot be empty")
+            return False
+        path = resolve_download_directory(value)
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"Error: could not create download directory {path}: {exc}")
+            return False
+        self.store.set_config(self.namespace, "directory", value)
+        print(f"Set download.directory = {path}")
+        return True
+
+    def sponsorblock_wizard(self, ui: SetupPrompts | None = None) -> None:
+        ui = ui or SetupPrompts()
+        ui.print("SponsorBlock Category Setup Wizard")
+        ui.print("For each category, choose: cut (remove), mark (add chapters), or off (do nothing).")
+        ui.print("Press Enter to keep the current value.")
+        ui.print("-" * 65)
 
         categories = {
             "sponsor": "Sponsor segments",
@@ -143,7 +217,7 @@ class DownloadAddon(BaseAddon):
             "selfpromo": "Self-promotion/Unpaid promotions",
             "preview": "Preview/Recap of the video",
             "filler": "Filler tangent/Joke/Off-topic",
-            "music_offtopic": "Non-music section in music video"
+            "music_offtopic": "Non-music section in music video",
         }
 
         config = self.config()
@@ -151,64 +225,56 @@ class DownloadAddon(BaseAddon):
             current = config.sb_actions.get(cat, "off")
             while True:
                 try:
-                    val = input(f"  {cat} ({desc}) [current: {current}] [cut/mark/off]: ").strip().lower()
+                    val = ui.input(f"  {cat} ({desc}) [current: {current}] [cut/mark/off]: ").strip().lower()
                 except (KeyboardInterrupt, EOFError):
-                    print("\nWizard cancelled.")
+                    ui.print("\nWizard cancelled.")
                     return
                 if not val:
                     val = current
                 if val in {"cut", "mark", "off"}:
-                    self.store.set_config(self.name, f"sb_action:{cat}", val)
+                    self.store.set_config(self.namespace, f"sb_action:{cat}", val)
                     break
-                print("  Invalid choice. Please enter 'cut', 'mark', or 'off'.")
+                ui.print("  Invalid choice. Please enter 'cut', 'mark', or 'off'.")
 
-        print("-" * 65)
-        print("SponsorBlock configuration updated successfully.")
+        ui.print("-" * 65)
+        ui.print("SponsorBlock configuration updated successfully.")
 
     def config(self) -> DownloadConfig:
-        quality = (self.store.get_config(self.name, "quality", DEFAULT_QUALITY) or DEFAULT_QUALITY).lower()
+        directory_value = self.store.get_config(self.namespace, "directory")
+        directory = resolve_download_directory(directory_value or "downloads")
+        quality = (self.store.get_config(self.namespace, "quality", DEFAULT_QUALITY) or DEFAULT_QUALITY).lower()
         if not valid_quality(quality):
             quality = DEFAULT_QUALITY
 
-        container = (self.store.get_config(self.name, "container", DEFAULT_CONTAINER) or DEFAULT_CONTAINER).lower()
+        container = (
+            self.store.get_config(self.namespace, "container", DEFAULT_CONTAINER) or DEFAULT_CONTAINER
+        ).lower()
         if container not in VALID_CONTAINERS:
             container = DEFAULT_CONTAINER
 
-        autowatch = (self.store.get_config(self.name, "auto_watch", "on") or "on").lower()
+        autowatch = (self.store.get_config(self.namespace, "auto_watch", "on") or "on").lower()
         auto_watch_bool = autowatch == "on"
 
         sb_cats = ["sponsor", "intro", "outro", "interaction", "selfpromo", "preview", "filler", "music_offtopic"]
         sb_actions = {}
         for cat in sb_cats:
-            action = (self.store.get_config(self.name, f"sb_action:{cat}", "off") or "off").lower()
+            action = (self.store.get_config(self.namespace, f"sb_action:{cat}", "off") or "off").lower()
             if action not in {"cut", "mark", "off"}:
                 action = "off"
             sb_actions[cat] = action
 
-        # Backward compatibility for old configs:
-        old_mode = self.store.get_config(self.name, "sponsorblock_mode")
-        if old_mode:
-            old_cats = self.store.get_config(self.name, "sponsorblock_categories") or "sponsor"
-            for cat in old_cats.split(","):
-                cat = cat.strip().lower()
-                if cat in sb_actions and self.store.get_config(self.name, f"sb_action:{cat}") is None:
-                    sb_actions[cat] = old_mode
-                    self.store.set_config(self.name, f"sb_action:{cat}", old_mode)
-            # Remove old configs to avoid conflicts
-            self.store.conn.execute("DELETE FROM addon_config WHERE addon_name = ? AND key IN ('sponsorblock_mode', 'sponsorblock_categories')", (self.name,))
-            self.store.conn.commit()
-
         return DownloadConfig(
+            directory=directory,
             quality=quality,
             container=container,
             auto_watch=auto_watch_bool,
             sb_actions=sb_actions,
         )
 
-    def after_video_list(self, ctx: VideoListContext, videos: list[Video]) -> None:
-        self.store.delete_cache_prefix(self.name, "last_video:")
+    def cache_video_list(self, videos: list[Video]) -> None:
+        self.store.delete_cache_prefix(self.namespace, "last_video:")
         for position, video in enumerate(videos, 1):
-            self.store.set_cache(self.name, f"last_video:{position}", video.video_id)
+            self.store.set_cache(self.namespace, f"last_video:{position}", video.video_id)
 
     def download_targets(self, targets: list[str]) -> None:
         debug_log(1, f"download: download_targets called with targets: {targets}")
@@ -248,9 +314,16 @@ class DownloadAddon(BaseAddon):
                 print(line)
             return
 
-        DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
         config = self.config()
-        debug_log(2, f"download config: quality={config.quality}, auto_watch={config.auto_watch}")
+        try:
+            config.directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"Could not create download directory {config.directory}: {exc}")
+            return
+        debug_log(
+            2,
+            f"download config: directory={config.directory}, quality={config.quality}, auto_watch={config.auto_watch}",
+        )
         is_debug = get_debug_level() > 0
         for url in dict.fromkeys(resolved):
             command = build_yt_dlp_command(url, config, quiet=not is_debug)
@@ -267,11 +340,11 @@ class DownloadAddon(BaseAddon):
                     if video:
                         title = video.title
                 if title:
-                    print(f"Downloading \"{title}\"...")
+                    print(f'Downloading "{title}"...')
                 else:
                     print(f"Downloading {url}...")
 
-            completed = subprocess.run(command, cwd=str(DOWNLOADS_DIR.parent))
+            completed = subprocess.run(command, cwd=str(config.directory.parent))
             debug_log(2, f"download: subprocess finished with exit code {completed.returncode}")
             if completed.returncode == 0:
                 print("Download complete.")
@@ -285,11 +358,10 @@ class DownloadAddon(BaseAddon):
                 print(f"Download failed with exit code {completed.returncode}.")
 
     def _last_video_by_position(self, position: int) -> Video | None:
-        raw = self.store.get_cache(self.name, f"last_video:{position}")
+        raw = self.store.get_cache(self.namespace, f"last_video:{position}")
         if not raw:
             return None
-        row = self.store.get_video(raw)
-        return row
+        return self.store.get_video(raw)
 
 
 def valid_quality(value: str) -> bool:
@@ -308,6 +380,13 @@ def format_selector(quality: str) -> str:
     return f"bv*[height<={height}]+ba/b[height<={height}]/best[height<={height}]"
 
 
+def resolve_download_directory(value: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return path.resolve()
+
+
 def build_yt_dlp_command(url: str, config: DownloadConfig, quiet: bool = False) -> list[str]:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     command = [
@@ -315,7 +394,7 @@ def build_yt_dlp_command(url: str, config: DownloadConfig, quiet: bool = False) 
         "-m",
         "yt_dlp",
         "--paths",
-        f"home:{DOWNLOADS_DIR}",
+        f"home:{config.directory}",
         "--ignore-config",
         "--cache-dir",
         str(CACHE_DIR / "yt-dlp"),
@@ -325,7 +404,6 @@ def build_yt_dlp_command(url: str, config: DownloadConfig, quiet: bool = False) 
         config.container,
         "--embed-metadata",
         "--embed-chapters",
-        "--write-info-json",
         "--no-playlist",
         "--restrict-filenames",
         "--output",
@@ -341,12 +419,14 @@ def build_yt_dlp_command(url: str, config: DownloadConfig, quiet: bool = False) 
     if cuts:
         command.extend(["--sponsorblock-remove", ",".join(cuts)])
     if marks:
-        command.extend([
-            "--sponsorblock-mark",
-            ",".join(marks),
-            "--sponsorblock-chapter-title",
-            "[SponsorBlock]: %(category_names)l",
-        ])
+        command.extend(
+            [
+                "--sponsorblock-mark",
+                ",".join(marks),
+                "--sponsorblock-chapter-title",
+                "[SponsorBlock]: %(category_names)l",
+            ]
+        )
 
     command.append(url)
     return command
@@ -358,7 +438,3 @@ def runtime_dependency_errors() -> list[str]:
         errors.append("ffmpeg is required for metadata embedding, chapter embedding, merging, and SponsorBlock cuts.")
         errors.append("Install it with your system package manager, then rerun setup if needed.")
     return errors
-
-
-def create_addon(store):
-    return DownloadAddon(store)

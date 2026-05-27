@@ -4,11 +4,12 @@ from datetime import datetime, time, timedelta
 import json
 import re
 import select
+import shlex
 import sys
 import termios
 import tty
 
-from ytsubs.core.addons import AddonRegistry, BaseAddon
+from ytsubs.core.addons import AddonRegistry, BaseAddon, SetupPrompts
 from ytsubs.core.models import Video, VideoListContext
 from ytsubs.core.util import debug_log
 
@@ -42,9 +43,6 @@ DAY_LABELS = {
     "sat": "Saturday",
     "sun": "Sunday",
 }
-PROTECTED_CORE_COMMANDS = {"sub", "s", "new", "n", "latest", "l", "watch", "w", "refresh", "r"}
-DOWNLOAD_COMMANDS = {"download", "dl"}
-DOWNLOAD_NON_ACTIONS = {"on", "enable", "off", "disable", "cfg", "help", "-h", "--help"}
 TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 
@@ -52,12 +50,27 @@ class FocusAddon(BaseAddon):
     name = "focus"
     description = "Delay or restrict video and subscription access using focus schedules."
     default_enabled = False
+    help_details = {
+        "focus": {
+            "summary": "Delay or schedule access to subscription and video actions.",
+            "usage": "focus on|off|setup|cfg [help|seconds N]|schedule ...|invincible on|off",
+            "details": (
+                "  - focus setup              - Run the focus addon's guided setup.\n"
+                "  - focus cfg seconds <n>    - Delay video lists; any key cancels the request.\n"
+                "  - focus schedule list      - Display active local-time access rules.\n"
+                "  - focus schedule set <days> allow|block <ranges> - Set access hours.\n"
+                "  - focus invincible on      - Enable protected mode after a warning.\n"
+                "  - focus invincible off     - Schedule shutdown for next-day 05:00."
+            ),
+            "examples": ["focus setup", "focus schedule set mon-thu allow 16:00-18:00,20:00-21:00"],
+        },
+    }
 
     def register_commands(self, registry: AddonRegistry) -> None:
         registry.command(
             "focus",
             self.command,
-            "focus on|off|cfg [help|seconds N]|schedule ...|invincible on|off",
+            "focus on|off|setup|cfg [help|seconds N]|schedule ...|invincible on|off",
             addon_name=self.name,
         )
 
@@ -74,6 +87,8 @@ class FocusAddon(BaseAddon):
             self.enable()
         elif action in {"off", "disable"}:
             self.disable()
+        elif action == "setup":
+            self.run_setup_command(rest)
         elif action == "cfg":
             self.command_cfg(rest)
         elif action in {"schedule", "hours"}:
@@ -83,7 +98,7 @@ class FocusAddon(BaseAddon):
         elif action in {"help", "-h", "--help"}:
             self.print_help()
         else:
-            print("Usage: focus on|off|cfg [help|seconds N]|schedule ...|invincible on|off")
+            print("Usage: focus on|off|setup|cfg [help|seconds N]|schedule ...|invincible on|off")
 
     def print_status(self) -> None:
         enabled = self.store.is_addon_enabled(self.name, self.default_enabled)
@@ -100,6 +115,7 @@ class FocusAddon(BaseAddon):
     def print_help(self) -> None:
         print("Focus Addon Commands:")
         print("  focus on | off")
+        print("  focus setup")
         print("  focus cfg seconds N")
         print("  focus schedule list")
         print("  focus schedule set DAYS allow|block HH:MM-HH:MM[,HH:MM-HH:MM...]")
@@ -121,6 +137,42 @@ class FocusAddon(BaseAddon):
             return
         self.store.set_addon_enabled(self.name, False)
         print("Focus addon disabled.")
+
+    def setup(self, ui: SetupPrompts) -> None:
+        if not self.setup_enabled(ui):
+            return
+        seconds = ui.ask_validated(
+            f"  Delay before showing a video list in seconds [{self.seconds()}]: ",
+            str(self.seconds()),
+            lambda value: value.isdigit() and int(value) >= 0,
+            "Enter a non-negative whole number.",
+        )
+        self.command_cfg(["seconds", seconds])
+        if ui.ask_yes_no("  Configure scheduled allowed/blocked hours now?", False):
+            if self.schedule() and ui.ask_yes_no("  Clear the existing schedule first?", False):
+                self.command_schedule(["clear", "all"])
+            ui.print("  Enter rules such as: mon-thu allow 16:00-18:00,20:00-21:00")
+            ui.print("  Use `allow` for usable windows or `block` for restricted windows; blank finishes.")
+            while True:
+                rule = ui.input("  Focus rule: ").strip()
+                if not rule:
+                    break
+                try:
+                    parts = shlex.split(rule)
+                except ValueError as exc:
+                    ui.print(f"  Invalid rule: {exc}")
+                    continue
+                self.command_schedule(["set", *parts])
+        if not self.invincible_enabled() and ui.ask_yes_no(
+            "  Enable invincible mode after reviewing its lock-in warning?", False
+        ):
+            ui.defer(lambda: self.command_invincible(["on"]))
+
+    def print_config(self) -> None:
+        self.print_status()
+
+    def set_config(self, key: str, value: str) -> None:
+        self.command_cfg([key, value])
 
     def command_cfg(self, args: list[str]) -> None:
         if not args:
@@ -417,10 +469,16 @@ class FocusAddon(BaseAddon):
         self.write_pending(pending)
         debug_log(1, "focus: applied pending invincible-mode changes")
 
-    def command_allowed(self, command: str, args: list[str], now: datetime | None = None) -> bool:
+    def command_allowed(
+        self,
+        command: str,
+        args: list[str],
+        access_controlled: bool,
+        now: datetime | None = None,
+    ) -> bool:
         self.apply_pending(now)
         self.enforce_invincible()
-        if not self.enabled or not self.is_protected_action(command, args):
+        if not self.enabled or not access_controlled:
             return True
         local_now = now or datetime.now()
         policy = self.schedule().get(WEEKDAYS[local_now.weekday()])
@@ -437,16 +495,6 @@ class FocusAddon(BaseAddon):
             f"{DAY_LABELS[WEEKDAYS[local_now.weekday()]]} at {local_now.strftime('%H:%M')} local time."
         )
         print("Run `focus schedule list` to view the active schedule.")
-        return False
-
-    def is_protected_action(self, command: str, args: list[str]) -> bool:
-        command = command.lower()
-        if command in {"new", "n"} and args and args[0].lower() == "default":
-            return False
-        if command in PROTECTED_CORE_COMMANDS:
-            return True
-        if command in DOWNLOAD_COMMANDS:
-            return bool(args) and args[0].lower() not in DOWNLOAD_NON_ACTIONS
         return False
 
     def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> bool:

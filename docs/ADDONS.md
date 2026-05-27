@@ -6,7 +6,7 @@ External mods are loaded only from the configured application mods directory. Th
 
 ## Addon Contract
 
-An addon is a Python module located inside `./ytsubs/addons/` (built-in) or `./mods/` (external). It must export a `create_addon` entrypoint:
+An addon is a single Python module located inside `./ytsubs/addons/` (shipped addon) or `./mods/` (user-installed addon). Both directories are discovered automatically; adding a new addon requires adding only its `.py` file. The module must export a `create_addon` entrypoint:
 
 ```python
 def create_addon(store):
@@ -16,26 +16,34 @@ def create_addon(store):
 The returned object must inherit from `BaseAddon`.
 
 ```python
-from ytsubs.core.addons import BaseAddon
+from ytsubs.core.addons import BaseAddon, SetupPrompts
 
 class YourAddon(BaseAddon):
     name = "your-addon"
     description = "A brief summary of what this addon does."
     default_enabled = False
+
+    def setup(self, ui: SetupPrompts) -> None:
+        if not self.setup_enabled(ui):
+            return
+        value = ui.input("  Option value [default]: ").strip() or "default"
+        self.store.set_config(self.name, "option1", value)
 ```
 
----
+The global application setup enumerates installed addons through `name` and `description` and calls `addon.setup(ui)`. It does not require an addon-specific core change. `BaseAddon.setup` already supplies a simple enable/disable prompt; override it only when the addon has additional questions.
+
+The manager also guarantees a `<name> setup` command. If the addon does not register a command named after itself, that setup entrypoint is provided automatically. If it does register its own named command, the manager reserves its `setup` action for `addon.setup(ui)` and passes the remaining actions to the addon handler.
 
 ## Command Standard Configuration Pattern
 
 To keep command interfaces clean and consistent for the user, all addons should follow the standardized configuration pattern:
-`[command] on|off|cfg [help|KEY VALUE]`
+`[command] on|off|setup|cfg [help|KEY VALUE]`
 
 Here is how you can implement this in your `command` handler:
 
 ```python
 def register_commands(self, registry):
-    registry.command("yourcommand", self.command, "yourcommand on|off|cfg [help|KEY VALUE]", addon_name=self.name)
+    registry.command("your-addon", self.command, "your-addon on|off|setup|cfg [help|KEY VALUE]", addon_name=self.name)
 
 def command(self, args):
     if not args:
@@ -46,11 +54,11 @@ def command(self, args):
 
     action = args[0].lower().strip()
     if action in {"on", "enable"}:
-        self.store.set_addon_enabled(self.name, True)
-        print("YourAddon enabled.")
+        self.enable()
     elif action in {"off", "disable"}:
-        self.store.set_addon_enabled(self.name, False)
-        print("YourAddon disabled.")
+        self.disable()
+    elif action == "setup":
+        self.run_setup_command(args[1:])
     elif action == "cfg":
         # Handle configuration viewing or settings
         if len(args) == 1:
@@ -69,6 +77,38 @@ if not self.require_enabled("yourcommand"):
 ```
 
 Configuration and `on` commands can remain available while an add-on is disabled; active behavior should not run until it is enabled.
+
+---
+
+## Help And Access Metadata
+
+Detailed CLI help belongs with the addon:
+
+```python
+help_details = {
+    "your-addon": {
+        "summary": "Describe this addon.",
+        "usage": "your-addon on|off|setup|cfg [help|KEY VALUE]",
+        "details": "  - your-addon setup - Run guided setup.",
+        "examples": ["your-addon setup"],
+    },
+}
+```
+
+If a command performs an action that should be blocked by access-policy addons such as `focus`, declare it during registration. Settings commands stay available:
+
+```python
+def register_commands(self, registry):
+    registry.command(
+        "your-addon",
+        self.command,
+        "your-addon ITEM|setup|cfg [KEY VALUE]",
+        addon_name=self.name,
+        access_controlled=lambda args: bool(args) and args[0] not in {"setup", "cfg", "on", "off"},
+    )
+```
+
+An addon that implements an access policy overrides `command_allowed(command, args, access_controlled)`. It should use the supplied classification rather than knowing other addons' command names.
 
 ---
 
@@ -150,7 +190,7 @@ with conn:
 
 ## Installing Custom Addons
 
-1. Place your Python addon file in the configured mods directory. For the standard repository/Docker setup:
+1. Place your Python addon file in the configured mods directory. No import list, CLI help registration outside that file, or setup-wizard change is needed. For the standard repository/Docker setup:
    ```text
    ./mods/custom_filter.py
    ```
