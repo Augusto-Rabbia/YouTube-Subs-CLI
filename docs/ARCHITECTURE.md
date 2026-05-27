@@ -21,7 +21,7 @@ CLI command (cli.py)
 -> Apply addon filters (title regex, Shorts checks)
 -> Resolve and cache missing durations for displayed videos (metadata.py / youtube.py)
 -> Run before list hooks (focus countdowns can cancel rendering)
--> Run title renderer hooks (DeArrow replacement and optional Shift Caps formatting)
+-> Run title renderer hooks (Anti-Clickbait replacement via the DeArrow API and optional Shift Caps formatting)
 -> Print list output
 -> Cache displayed indices for core watch/download shortcuts
 -> Run after list hooks for addon-owned behavior
@@ -50,7 +50,7 @@ Manages the SQLite database operations, schema migrations, configurations, and c
 * `video_metadata`: Caches duration metadata independently from RSS feed records.
 * `addon_state`: Track enabled/disabled status of addons.
 * `addon_config`: Save persistent key-value configuration values.
-* `addon_cache`: Cache transient keys (e.g. Shorts HEAD statuses, DeArrow metadata, numbered list cache position mappings).
+* `addon_cache`: Cache transient keys (e.g. Shorts HEAD statuses, Anti-Clickbait/DeArrow-source metadata, numbered list cache position mappings).
 * `channel_search_results`: Cache temporary channel searches.
 
 ### 5. `ytsubs.core.youtube`

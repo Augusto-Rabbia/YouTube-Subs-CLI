@@ -18,7 +18,7 @@ It gives you a deliberate way to use YouTube:
 - **An inbox, not a feed**: `new` and `latest` show subscribed uploads directly, with timestamps, duration, and watched tracking.
 - **Your own organization**: Profiles separate contexts such as study and entertainment; categories let you query only what matters right now.
 - **Attention controls built in**: `focus` supports delays, daily access windows, and an optional invincible mode for commitments you cannot immediately undo.
-- **Less clickbait and noise**: Filter titles and Shorts, or use DeArrow titles with optional Shift Caps formatting.
+- **Less clickbait and noise**: Filter titles and Shorts, or use Anti-Clickbait with DeArrow API community titles and optional Shift Caps formatting. Consider supporting the DeArrow project if you use it.
 - **Take videos with you**: Download selected items with embedded metadata, chapters, quality controls, and optional SponsorBlock processing.
 - **Private by default**: It works locally from public YouTube data and does not require browser sign-in or an API key.
 
@@ -77,12 +77,12 @@ The wizard can configure:
 
 - subscriptions entered as `@handles`, channel IDs, URLs, or plain-text channel names;
 - downloads, including destination folder, video container, quality, watched tracking, and SponsorBlock actions;
-- Shorts/title filtering and DeArrow title display;
+- Shorts/title filtering and Anti-Clickbait title display;
 - focus delays, weekly access schedules, and optional invincible mode.
 
 Run `setup` later to revisit the wizard; because it can alter existing settings, rerunning it requires typing `ok` first.
 
-Downloading is built into the application and can be reconfigured independently with `download setup`. Each optional addon owns its guided configuration and can be configured independently with `title-filter setup`, `dearrow setup`, or `focus setup`.
+Downloading is built into the application and can be reconfigured independently with `download setup`. Each optional addon owns its guided configuration and can be configured independently with `title-filter setup`, `anti-clickbait setup`, or `focus setup`.
 
 ## Usage Tutorial
 

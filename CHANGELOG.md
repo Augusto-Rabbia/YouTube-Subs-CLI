@@ -2,13 +2,15 @@
 
 ## Unreleased
 
+## 0.5.0 - 2026-05-27
+
 - Renamed `focus-delay` to `focus` and expanded it with cancel-on-key delays, per-day allow/block schedules, and an invincible mode that defers protected changes until the following day at 05:00 local time.
 - Saved default subscription OPML exports under the persisted `data/` directory so Docker users can export without writing to `/app`.
 - Added a first-launch and rerunnable `setup` wizard that resolves requested subscriptions while configuring addons.
 - Added configurable download output folders and stopped generating `*.info.json` sidecar files for downloads.
 - Refactored setup, help metadata, access control, discovery, and addon-specific storage around addon-owned interfaces; adding an addon now requires only its `.py` file.
 - Promoted downloading from an addon into built-in app functionality with integrated commands, setup, help, and list-index handling.
-- Added optional `shift-caps` title capitalization to the DeArrow addon.
+- Renamed the DeArrow addon and command to `anti-clickbait`, with optional `shift-caps` title capitalization.
 
 ## 0.4.0 - 2026-05-26
 
