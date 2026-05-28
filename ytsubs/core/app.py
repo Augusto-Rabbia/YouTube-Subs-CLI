@@ -732,15 +732,20 @@ class App:
                 category = " ".join(args)
 
         debug_log(2, f"Executing new command: days={days}, category={category!r}")
-        self.refresh_silent()
-        debug_log(2, "Fetching latest unwatched videos from store")
-        videos = self.store.latest_videos(days=days, unwatched_only=True, category=category)
-        debug_log(2, f"Fetched {len(videos)} raw videos from store")
         if category:
             heading = f"New videos from category '{category}':"
         else:
             heading = "New videos from your subscriptions:"
         ctx = VideoListContext(purpose="new", heading=heading)
+
+        if not self.addons.before_fetch(ctx):
+            print("Video list request cancelled.")
+            return
+
+        self.refresh_silent()
+        debug_log(2, "Fetching latest unwatched videos from store")
+        videos = self.store.latest_videos(days=days, unwatched_only=True, category=category)
+        debug_log(2, f"Fetched {len(videos)} raw videos from store")
         if not videos:
             if category:
                 print(f"No new unwatched videos in category '{category}' in the last {days} days.")
@@ -803,11 +808,6 @@ class App:
                     return
 
         debug_log(2, f"Executing latest: limit={limit}, days={days}, channel_id={channel_id}, category={category!r}")
-        self.refresh_silent(channel_id=channel_id)
-        debug_log(2, "Fetching latest videos from store")
-        videos = self.store.latest_videos(limit=limit, days=days, channel_id=channel_id, category=category)
-        debug_log(2, f"Fetched {len(videos)} raw videos from store")
-
         if channel_id and limit is not None:
             heading = f"The {limit} latest videos from {channel_label} are:"
         elif channel_id and days is not None:
@@ -822,6 +822,15 @@ class App:
             heading = f"The latest videos from your subscriptions in the past {days} days are:"
 
         ctx = VideoListContext(purpose="latest", heading=heading)
+
+        if not self.addons.before_fetch(ctx):
+            print("Video list request cancelled.")
+            return
+
+        self.refresh_silent(channel_id=channel_id)
+        debug_log(2, "Fetching latest videos from store")
+        videos = self.store.latest_videos(limit=limit, days=days, channel_id=channel_id, category=category)
+        debug_log(2, f"Fetched {len(videos)} raw videos from store")
         if not videos:
             print("No videos found.")
             self.last_videos = []

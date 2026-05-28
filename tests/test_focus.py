@@ -104,19 +104,11 @@ class FocusAddonTests(unittest.TestCase):
 
     def test_key_press_cancels_delay_hook(self) -> None:
         self.store.set_config(self.addon.name, "seconds", "3")
-        video = Video(
-            video_id="abcdefghijk",
-            channel_id="channel",
-            channel_name="Channel",
-            title="Title",
-            url="https://youtu.be/abcdefghijk",
-            published_at=datetime(2026, 5, 25, tzinfo=timezone.utc),
-        )
         with (
             patch.object(sys.stdin, "isatty", return_value=True),
             patch("ytsubs.addons.focus.wait_for_key_or_timeout", return_value=False),
         ):
-            allowed = self.addon.before_video_list(VideoListContext("new", "New:"), [video])
+            allowed = self.addon.before_fetch(VideoListContext("new", "New:"))
         self.assertFalse(allowed)
 
     def test_cancelled_list_does_not_replace_previous_list_cache(self) -> None:

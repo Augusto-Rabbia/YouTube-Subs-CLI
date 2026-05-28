@@ -51,6 +51,9 @@ class Addon(Protocol):
     def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> bool | None:
         ...
 
+    def before_fetch(self, ctx: VideoListContext) -> bool | None:
+        ...
+
     def filter_videos(self, ctx: VideoListContext, videos: list[Video]) -> list[Video]:
         ...
 
@@ -200,6 +203,9 @@ class BaseAddon:
     def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> bool | None:
         return True
 
+    def before_fetch(self, ctx: VideoListContext) -> bool | None:
+        return True
+
     def filter_videos(self, ctx: VideoListContext, videos: list[Video]) -> list[Video]:
         return videos
 
@@ -333,6 +339,15 @@ class AddonManager:
             if self.is_enabled(addon):
                 if addon.before_video_list(ctx, videos) is False:
                     return False
+        return True
+
+    def before_fetch(self, ctx: VideoListContext) -> bool:
+        for addon in self.addons.values():
+            if self.is_enabled(addon):
+                hook = getattr(addon, "before_fetch", None)
+                if callable(hook):
+                    if hook(ctx) is False:
+                        return False
         return True
 
     def render_title(self, ctx: VideoListContext, video: Video, title: str) -> str:

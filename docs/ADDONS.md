@@ -131,7 +131,15 @@ An addon that implements an access policy overrides `command_allowed(command, ar
 
 Addons can inject logic at different points of the video display pipeline:
 
-### 1. Filter Videos (`filter_videos`)
+### 1. Before Fetch (`before_fetch`)
+Runs before fetching videos from the network/store (e.g. countdown timers, delays). Return `False` to cancel command execution; returning `None` or `True` lets the fetch proceed.
+```python
+def before_fetch(self, ctx):
+    # Perform a countdown delay
+    return wait_for_countdown()
+```
+
+### 2. Filter Videos (`filter_videos`)
 Filter out or reorder videos before they are displayed.
 ```python
 def filter_videos(self, ctx, videos):
@@ -139,8 +147,8 @@ def filter_videos(self, ctx, videos):
     return [v for v in videos if "unboxing" not in v.title.lower()]
 ```
 
-### 2. Before Video List (`before_video_list`)
-Runs immediately before the video list is outputted to the terminal (e.g. countdown timers, delays). Return `False` to cancel rendering; returning `None` or `True` lets the list proceed.
+### 3. Before Video List (`before_video_list`)
+Runs immediately before the video list is outputted to the terminal. Return `False` to cancel rendering; returning `None` or `True` lets the list proceed.
 ```python
 def before_video_list(self, ctx, videos):
     if not confirm_display(videos):
@@ -149,14 +157,14 @@ def before_video_list(self, ctx, videos):
     return True
 ```
 
-### 3. Title Renderer (`render_title`)
+### 4. Title Renderer (`render_title`)
 Modifies the displayed title string without changing the original title stored in the database (e.g. clickbait translation).
 ```python
 def render_title(self, ctx, video, current_title):
     return current_title.upper()
 ```
 
-### 4. After Video List (`after_video_list`)
+### 5. After Video List (`after_video_list`)
 Runs after the list has completed rendering. Excellent for mapping list positions to video IDs in a cache.
 ```python
 def after_video_list(self, ctx, videos):

@@ -528,11 +528,14 @@ class FocusAddon(BaseAddon):
         return False
 
     def before_video_list(self, ctx: VideoListContext, videos: list[Video]) -> bool:
+        return True
+
+    def before_fetch(self, ctx: VideoListContext) -> bool:
         self.apply_pending()
         seconds = self.seconds()
-        debug_log(2, f"focus: before_video_list called (seconds={seconds})")
-        if seconds <= 0 or not videos:
-            debug_log(2, "focus: skipping focus delay (seconds <= 0 or no videos)")
+        debug_log(2, f"focus: before_fetch called (seconds={seconds})")
+        if seconds <= 0:
+            debug_log(2, "focus: skipping focus delay (seconds <= 0)")
             return True
         if not sys.stdin.isatty():
             debug_log(2, "focus: sys.stdin is not a tty; skipping countdown")
