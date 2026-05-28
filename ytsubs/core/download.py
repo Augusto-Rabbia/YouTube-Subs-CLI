@@ -450,7 +450,7 @@ def build_yt_dlp_command(url: str, config: DownloadConfig, quiet: bool = False) 
     ]
 
     if quiet:
-        command.extend(["--quiet", "--no-warnings"])
+        command.extend(["--quiet", "--no-warnings", "--progress"])
 
     cuts = [cat for cat, act in config.sb_actions.items() if act == "cut"]
     marks = [cat for cat, act in config.sb_actions.items() if act == "mark"]

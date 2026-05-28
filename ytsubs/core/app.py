@@ -614,8 +614,11 @@ class App:
 
     # Video commands
     def _fetch_subscription_feeds(
-        self, rows: list[sqlite3.Row], *, silent: bool = False
+        self, rows: list[sqlite3.Row], *, silent: bool = False, show_progress: bool = False
     ) -> list[tuple[str, list[Video] | None, Exception | None]]:
+        import sys
+        import concurrent.futures
+
         def fetch_worker(row) -> tuple[str, list[Video] | None, Exception | None]:
             debug_log(2, f"Start fetch worker for {row['display_name']} ({row['channel_id']})")
             try:
@@ -633,8 +636,40 @@ class App:
         max_workers = min(10, len(rows))
         suffix = " (silent)" if silent else ""
         debug_log(1, f"Refreshing {len(rows)} feeds{suffix} in parallel with {max_workers} thread workers...")
+
+        results = [None] * len(rows)
+        row_to_index = {row["channel_id"]: idx for idx, row in enumerate(rows)}
+        total = len(rows)
+
+        if show_progress and sys.stdout.isatty() and total > 0:
+            first_channel = rows[0]["display_name"]
+            msg = f"\rFetching {first_channel} videos... (0/{total})\033[K"
+            sys.stdout.write(msg)
+            sys.stdout.flush()
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            return list(executor.map(fetch_worker, rows))
+            futures = {executor.submit(fetch_worker, row): row for row in rows}
+            completed = 0
+            for future in concurrent.futures.as_completed(futures):
+                row = futures[future]
+                completed += 1
+                if show_progress and sys.stdout.isatty():
+                    msg = f"\rFetching {row['display_name']} videos... ({completed}/{total})\033[K"
+                    sys.stdout.write(msg)
+                    sys.stdout.flush()
+
+                try:
+                    res = future.result()
+                except Exception as exc:
+                    res = (row["display_name"], None, exc)
+                idx = row_to_index[row["channel_id"]]
+                results[idx] = res
+
+        if show_progress and sys.stdout.isatty() and total > 0:
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+
+        return results
 
     def refresh(self, channel_id: str | None = None) -> None:
         debug_log(1, f"refresh invoked (channel_id={channel_id!r})")
@@ -665,7 +700,9 @@ class App:
         if not channel_id and not failures:
             self.store.set_config("core", "last_refresh_time", utcnow().isoformat())
 
-    def refresh_silent(self, channel_id: str | None = None, force: bool = False) -> None:
+    def refresh_silent(
+        self, channel_id: str | None = None, force: bool = False, show_progress: bool = False
+    ) -> None:
         debug_log(1, f"refresh_silent invoked (channel_id={channel_id!r}, force={force})")
         if not force and not channel_id:
             last_refresh_str = self.store.get_config("core", "last_refresh_time")
@@ -688,7 +725,7 @@ class App:
             debug_log(1, "No subscriptions to refresh.")
             return
 
-        results = self._fetch_subscription_feeds(rows, silent=True)
+        results = self._fetch_subscription_feeds(rows, silent=True, show_progress=show_progress)
 
         failures = False
         for display_name, videos, exc in results:
@@ -742,7 +779,7 @@ class App:
             print("Video list request cancelled.")
             return
 
-        self.refresh_silent()
+        self.refresh_silent(show_progress=True)
         debug_log(2, "Fetching latest unwatched videos from store")
         videos = self.store.latest_videos(days=days, unwatched_only=True, category=category)
         debug_log(2, f"Fetched {len(videos)} raw videos from store")
@@ -827,7 +864,7 @@ class App:
             print("Video list request cancelled.")
             return
 
-        self.refresh_silent(channel_id=channel_id)
+        self.refresh_silent(channel_id=channel_id, show_progress=True)
         debug_log(2, "Fetching latest videos from store")
         videos = self.store.latest_videos(limit=limit, days=days, channel_id=channel_id, category=category)
         debug_log(2, f"Fetched {len(videos)} raw videos from store")
