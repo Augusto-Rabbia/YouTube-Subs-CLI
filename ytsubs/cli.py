@@ -225,22 +225,12 @@ HELP_DETAILS = {
 
 
 class Shell(cmd.Cmd):
-    intro = "ytsubs-cli. Type `help` for commands. Type `quit` to exit."
+    intro = "Welcome to YTSubs-CLI! Type `help` for commands. Type `quit` to exit."
     prompt = "> "
 
     def __init__(self, app: App):
         super().__init__()
         self.app = app
-        try:
-            default_days_str = self.app.store.get_config("core", "new_days", "7")
-            default_days = int(default_days_str) if (default_days_str and default_days_str.isdigit()) else 7
-            unwatched_videos = self.app.store.latest_videos(days=default_days, unwatched_only=True)
-            count = len(unwatched_videos)
-        except Exception:
-            count = 0
-            default_days = 7
-        welcome_str = f"Welcome! You have {count} new unwatched video{'s' if count != 1 else ''} from the last {default_days} days."
-        self.intro = f"ytsubs-cli. {welcome_str}\nType `help` for commands. Type `quit` to exit."
 
     def default(self, line: str) -> None:
         self.run_line(line)
@@ -296,7 +286,7 @@ class Shell(cmd.Cmd):
                     print(f"Unknown command: '{arg}'. Type `help` to list commands.")
             return
 
-        print("ytsubs-cli commands:")
+        print("YTSubs-CLI commands:")
         print("Core Commands:")
         core_list = [
             ("s", "sub"),
@@ -379,7 +369,7 @@ class Shell(cmd.Cmd):
 def main(argv: Optional[list[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv in (["--version"], ["-V"]):
-        print(f"ytsubs-cli {__version__}")
+        print(f"YTSubs-CLI {__version__}")
         return 0
 
     ensure_project_dirs()
